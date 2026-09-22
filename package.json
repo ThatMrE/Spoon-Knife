@@ -1,0 +1,17 @@
+{
+  "name": "spaceteam-lan",
+  "version": "0.1.0",
+  "description": "A local-WiFi, shout-at-each-other co-op party game for phones. A recreation of Spaceteam that runs in the browser with zero dependencies.",
+  "type": "module",
+  "private": true,
+  "main": "server/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "license": "MIT"
+}

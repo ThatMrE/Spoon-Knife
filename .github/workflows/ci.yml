@@ -1,0 +1,190 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# A new push to a PR makes the previous run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor declared in package.json "engines", both current LTS lines,
+        # and the current release, so we hear about a regression early.
+        node: ['20', '22', '24', '26']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # No install step on purpose: the game has zero dependencies and no
+      # lockfile, so `npm ci` would fail and `npm install` would be a no-op.
+      - name: Check for dependencies
+        run: |
+          if grep -qE '"(dependencies|devDependencies)"' package.json; then
+            echo "::error::package.json gained dependencies; add an install step to CI."
+            exit 1
+          fi
+          echo "No dependencies, as intended."
+
+      - name: Run tests
+        run: npm test
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # GitHub runners ship the Android SDK, but not necessarily this exact
+      # platform. Installing it explicitly beats relying on AGP's auto-download.
+      - name: Ensure SDK platform 35
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "Using SDK at $SDK"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Unit tests
+        working-directory: android
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      # Gradle's test task passes when it finds no tests at all, so a green
+      # tick alone does not prove anything ran. Assert on the JUnit XML.
+      - name: Assert the unit tests actually ran
+        working-directory: android
+        run: |
+          python3 - <<'PY'
+          import glob, sys, xml.etree.ElementTree as ET
+
+          files = glob.glob('app/build/test-results/testDebugUnitTest/*.xml')
+          if not files:
+              sys.exit('::error::no JUnit result files — the tests did not run')
+
+          tests = failures = errors = skipped = 0
+          for path in files:
+              suite = ET.parse(path).getroot()
+              tests += int(suite.get('tests', 0))
+              failures += int(suite.get('failures', 0))
+              errors += int(suite.get('errors', 0))
+              skipped += int(suite.get('skipped', 0))
+
+          print(f'{tests} tests, {failures} failures, {errors} errors, {skipped} skipped')
+          if tests == 0:
+              sys.exit('::error::JUnit reported zero tests')
+          if failures or errors:
+              sys.exit('::error::unit tests failed')
+          PY
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
+
+      # Prove the artifact is a real, signed, installable APK rather than just
+      # a file that exists.
+      - name: Inspect the APK
+        working-directory: android
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          APK=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          test -n "$APK" || { echo "::error::no APK produced"; exit 1; }
+          echo "APK: $APK ($(du -h "$APK" | cut -f1))"
+
+          AAPT=$(ls "$SDK"/build-tools/*/aapt2 | tail -1)
+          "$AAPT" dump badging "$APK" | grep -E "^(package|application-label|sdkVersion|targetSdkVersion|launchable-activity|uses-permission)" || true
+
+          # Hosting in the background fails at runtime, on a device, if any of
+          # this is missing — Android 14 throws SecurityException for a
+          # foreground service without its matching permission. Assert rather
+          # than print.
+          echo "--- manifest requirements ---"
+          BADGING=$("$AAPT" dump badging "$APK")
+          for permission in \
+            android.permission.INTERNET \
+            android.permission.FOREGROUND_SERVICE \
+            android.permission.FOREGROUND_SERVICE_SPECIAL_USE \
+            android.permission.WAKE_LOCK \
+            android.permission.POST_NOTIFICATIONS
+          do
+            if echo "$BADGING" | grep -q "uses-permission: name='$permission'"; then
+              echo "  ok   $permission"
+            else
+              echo "::error::$permission is not declared; hosting would fail on a device"
+              exit 1
+            fi
+          done
+
+          # The service itself, and its foregroundServiceType. specialUse is
+          # 1 << 30 = 0x40000000 in the compiled manifest.
+          XMLTREE=$("$AAPT" dump xmltree --file AndroidManifest.xml "$APK" \
+            || "$AAPT" dump xmltree "$APK" --file AndroidManifest.xml)
+          if echo "$XMLTREE" | grep -q "HostService"; then
+            echo "  ok   HostService is declared"
+          else
+            echo "::error::HostService missing from the manifest"
+            exit 1
+          fi
+          if echo "$XMLTREE" | grep -i "foregroundServiceType" | grep -q "0x40000000"; then
+            echo "  ok   foregroundServiceType=specialUse"
+          else
+            echo "::error::foregroundServiceType is not specialUse"
+            echo "$XMLTREE" | grep -i "foregroundServiceType" || echo "  (attribute absent entirely)"
+            exit 1
+          fi
+
+          APKSIGNER=$(ls "$SDK"/build-tools/*/apksigner | tail -1)
+          "$APKSIGNER" verify --print-certs "$APK"
+
+          # A phone hosts by serving these out of its own APK. If the asset
+          # copy silently half-ran, the host would 404 on its own client.
+          echo "--- bundled web assets ---"
+          for entry in \
+            assets/web/index.html \
+            assets/web/js/app.js \
+            assets/web/css/style.css \
+            assets/web/host/host.html \
+            assets/web/host/bridge.js \
+            assets/web/shared/protocol.js \
+            assets/web/core/rooms.js \
+            assets/web/core/game.js \
+            assets/web/core/panel.js \
+            assets/web/core/jargon.js
+          do
+            if unzip -l "$APK" "$entry" | grep -q "$entry"; then
+              echo "  ok   $entry"
+            else
+              echo "::error::$entry missing from the APK — a phone could not host"
+              exit 1
+            fi
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spaceteam-lan-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A rocket, straight lines only, kept inside the adaptive-icon safe zone
+     (the centre 72x72 of the 108x108 canvas). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+  <!-- exhaust -->
+  <path
+      android:fillColor="#FFB545"
+      android:pathData="M48,74 L54,90 L60,74 Z" />
+  <!-- nose -->
+  <path
+      android:fillColor="#35E0D0"
+      android:pathData="M54,24 L66,50 L42,50 Z" />
+  <!-- body -->
+  <path
+      android:fillColor="#35E0D0"
+      android:pathData="M42,50 L66,50 L66,74 L42,74 Z" />
+  <!-- fins -->
+  <path
+      android:fillColor="#1FA99D"
+      android:pathData="M42,60 L32,80 L42,74 Z" />
+  <path
+      android:fillColor="#1FA99D"
+      android:pathData="M66,60 L76,80 L66,74 Z" />
+  <!-- porthole -->
+  <path
+      android:fillColor="#0A0D18"
+      android:pathData="M54,56 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0 Z" />
+</vector>

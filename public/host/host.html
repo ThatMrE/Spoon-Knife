@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Spaceteam host</title>
+<!-- Stops the browser asking for /favicon.ico and logging a 404 on a page
+     that is never actually looked at. -->
+<link rel="icon" href="data:,">
+</head>
+<body>
+<!--
+  Loaded in an off-screen WebView on the hosting phone. Nothing here is ever
+  seen: the host player's own game runs in a separate, visible WebView that
+  connects back to 127.0.0.1 like any other phone.
+-->
+<p>Spaceteam LAN — host engine. This page has no UI.</p>
+<script type="module" src="/host/bridge.js"></script>
+</body>
+</html>

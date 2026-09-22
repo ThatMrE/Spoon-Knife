@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- %1$s is the address other phones connect to, %2$d the crew size. -->
+  <plurals name="notification_crew">
+    <item quantity="one">%1$s · %2$d player aboard</item>
+    <item quantity="other">%1$s · %2$d players aboard</item>
+  </plurals>
+</resources>
