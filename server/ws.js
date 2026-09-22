@@ -42,6 +42,11 @@ export class WebSocketConnection extends EventEmitter {
     socket.on('data', (chunk) => this._onData(chunk));
     socket.on('error', () => this.terminate());
     socket.on('close', () => this._finish());
+    // An upgraded socket stays half-open when the peer sends FIN: 'end' fires
+    // but 'close' never does, so without this a phone that simply closes its
+    // browser tab would sit in the crew until the heartbeat noticed, holding a
+    // console that instructions keep pointing at.
+    socket.on('end', () => this.terminate());
   }
 
   send(value) {

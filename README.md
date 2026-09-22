@@ -1,5 +1,7 @@
 # 🚀 Spaceteam LAN
 
+[![CI](https://github.com/ThatMrE/Spoon-Knife/actions/workflows/ci.yml/badge.svg)](https://github.com/ThatMrE/Spoon-Knife/actions/workflows/ci.yml)
+
 A shout-at-your-friends co-op party game for phones on the same WiFi. It's a
 recreation of [Spaceteam](https://spaceteam.ca/): everyone holds a console full
 of gizmos nobody else can see, and everyone is given instructions for gizmos
@@ -22,7 +24,7 @@ else opens a URL.
 
 ## Running it
 
-Needs Node 18 or newer. There are **no dependencies** — nothing to install.
+Needs Node 20 or newer. There are **no dependencies** — nothing to install.
 
 ```sh
 git clone <this repo>
@@ -105,11 +107,21 @@ browser.
 npm test
 ```
 
-37 tests covering the WebSocket framing (including the RFC 6455 handshake
-vector), path-traversal safety on the static server, console generation, and
-the game loop driven by a fake clock — cross-console targeting, scoring,
-expiry damage, wave progression, emergencies, and players dropping off the
-WiFi mid-game.
+54 tests, no test framework — just `node --test`:
+
+* **Unit** — WebSocket framing (including the RFC 6455 handshake vector),
+  path-traversal safety on the static server, console generation and the
+  satisfaction rules.
+* **Game loop** — driven by a fake clock, so a ten-minute game runs in
+  milliseconds: cross-console targeting, scoring, expiry damage, wave
+  progression, emergency cadence, and players dropping off the WiFi mid-game.
+* **Integration** (`test/server.test.js`) — boots the real server and talks to
+  it over a real socket with a hand-rolled WebSocket client, covering the
+  handshake, static serving, and the lobby/game protocol end to end. This is
+  the layer that catches a server which frames or hashes things wrong; the
+  unit tests all passed while no browser could connect.
+
+CI runs the suite on Node 20, 22, 24 and 26 for every pull request.
 
 ## Known limitations
 
