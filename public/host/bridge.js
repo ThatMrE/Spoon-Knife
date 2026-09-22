@@ -16,6 +16,7 @@
  */
 // Relative on purpose: this resolves to /core/rooms.js in the WebView *and*
 // to core/rooms.js on disk, so the tests exercise the real module graph.
+import { PHASE } from '../../shared/protocol.js';
 import { RoomManager } from '../../core/rooms.js';
 
 /**
@@ -84,6 +85,21 @@ export function createHost(native) {
       connections.delete(id);
       connection.closed = true;
       connection.emit('close');
+    },
+
+    /**
+     * Advance every running game. Each room also drives itself on a JS
+     * interval, but a WebView that is off-screen in a background process can
+     * have its timers throttled — so the native side calls this on a real
+     * scheduler as well. Ticking twice is harmless: the game is driven by
+     * deadlines, not by tick count.
+     */
+    tick() {
+      for (const room of rooms.rooms.values()) {
+        if (room.phase !== PHASE.PLAYING) continue;
+        room.game.tick();
+        if (room.game.isOver) room.finish();
+      }
     },
 
     /** Diagnostics for the host's own screen. */

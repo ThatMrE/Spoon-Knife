@@ -69,11 +69,34 @@ all you need:
 * **Host from a phone.** One phone runs the whole game: a native listening
   socket, the game rules in an off-screen WebView, and that player's own client
   connecting back to `127.0.0.1` like anybody else.
+* **Hosting survives a pocket.** The server runs in a foreground service with a
+  wake lock, so the host can put their phone down, take a call, or let the
+  screen sleep without throwing everyone else out of the game.
 * **It finds the host for you.** Tap *Find ships on this WiFi* and it sweeps
   your subnet, so nobody reads an IP address out loud.
 * **The screen never sleeps.** A phone that dims mid-wave was the worst part of
   playing this in a browser.
 * **Real fullscreen, real app icon.** No URL bar eating the top of the console.
+
+### Hosting in the background
+
+The server and the game engine live in a foreground service, not in the
+Activity, so the ship outlives the screen:
+
+* A **wake lock** keeps the CPU up once the screen sleeps.
+* The game is **ticked from a real scheduler** as well as from the engine's own
+  JS interval. An off-screen WebView in a backgrounded process can have its
+  timers throttled, which would quietly stall a game everyone else is still
+  playing. The game is driven by deadlines rather than tick counts, so being
+  ticked twice is harmless.
+* The notification carries a **Stop hosting** action, because leaving a ship
+  running by accident is the failure mode worth guarding against.
+* Swiping the app away stops the service; pressing home does not.
+
+The service type is `specialUse`: a phone acting as the game server for the room
+it is in is honestly not `dataSync`, `mediaPlayback` or `connectedDevice`.
+Notification permission is requested but never required — denying it only hides
+the notification, it does not stop the service.
 
 ### How a phone hosts without a second copy of the rules
 
@@ -229,9 +252,10 @@ CI runs the Node suite on Node 20, 22, 24 and 26, and builds the APK.
   end-to-end by real browsers on a desktop — but the Android-specific parts
   (AssetManager, the WebView bridge, the UI) are unverified on a phone. Treat
   it as a first cut.
-* **A hosting phone must stay in the app** with the screen on. There is no
-  foreground service, so backgrounding the host will eventually stop the game
-  for everybody.
+* **The host player goes idle if they background the app.** The *ship* keeps
+  running for everybody else, but a paused WebView stops answering the host's
+  own instructions, so their orders will start expiring and costing hull.
+  Hosting and playing at the same time means staying on screen.
 * **No spectating or mid-game joining** — the ship is sealed at launch.
 * **Rooms live in memory**, so restarting the server ends every game.
 * Audio needs one tap on the page before it will make noise (browser policy),

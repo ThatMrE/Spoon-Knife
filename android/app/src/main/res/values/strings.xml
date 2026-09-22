@@ -19,4 +19,12 @@
   <string name="need_address">Type the address the host is showing.</string>
   <string name="cant_reach">Could not reach that ship.</string>
   <string name="change_host">CHANGE ADDRESS</string>
+
+  <string name="notification_channel">Hosting a game</string>
+  <string name="notification_channel_description">Shown while this phone is running a game for other players.</string>
+  <string name="notification_title">Spaceteam LAN — hosting</string>
+  <string name="notification_starting">Starting the ship…</string>
+  <string name="notification_stop">STOP HOSTING</string>
+  <string name="notification_no_wifi">no WiFi address</string>
+  <string name="notifications_denied">Hosting anyway, but Android will not show the hosting notification.</string>
 </resources>

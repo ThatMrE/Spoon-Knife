@@ -1,9 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-  <!-- The only permission needed: talk to a server on the local network.
-       Subnet discovery enumerates NetworkInterface, which needs no permission. -->
+  <!-- Talk to, and listen on, the local network. Subnet discovery enumerates
+       NetworkInterface, which needs no permission of its own. -->
   <uses-permission android:name="android.permission.INTERNET" />
+
+  <!-- Hosting runs in a foreground service so the ship stays up when the host
+       puts their phone in a pocket. -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+  <!-- Keeps the CPU alive with the screen off, so the game keeps ticking. -->
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <!-- Only so the "hosting" notification is visible; hosting works without it. -->
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
   <!-- usesCleartextTraffic: the whole point is plain HTTP to a machine on the
        same WiFi. There is no certificate to be had for 192.168.x.x, and a
@@ -27,5 +36,17 @@
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
     </activity>
+
+    <!-- "specialUse" because none of the other types describe this honestly: a
+         phone acting as the game server for the room it is in is not data
+         sync, media, or a connected device. -->
+    <service
+        android:name=".HostService"
+        android:exported="false"
+        android:foregroundServiceType="specialUse">
+      <property
+          android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+          android:value="Hosts the local-network game server other players are connected to." />
+    </service>
   </application>
 </manifest>

@@ -5,6 +5,7 @@ Hosts a game and joins one, so a phone is all you need.
 ```
 app/src/main/java/io/github/thatmre/spaceteamlan/
   MainActivity.java      host-or-join screen, fullscreen WebView, keeps the screen awake
+  HostService.java       hosting: foreground service, wake lock, notification, tick
   HostEngine.java        hosting: the off-screen WebView that runs the game rules
   HostServer.java        hosting: TCP, HTTP, WebSocket upgrade  (no Android imports)
   WebSocketFrames.java   RFC 6455 framing                        (no Android imports)
@@ -32,8 +33,14 @@ be native:
   back to `127.0.0.1` exactly like any other phone.
 
 The native↔JS contract is four calls each way (`open`/`message`/`close` in,
-`send`/`close` out) and nothing else crosses the boundary, which is what keeps
-the part that cannot be tested off-device small.
+`send`/`close` out), plus `tick` and `status`, and nothing else crosses the
+boundary — which is what keeps the part that cannot be tested off-device small.
+
+All of it lives in `HostService`, a foreground service, so hosting survives the
+host backgrounding the app. The service holds a partial wake lock and ticks the
+game from a `ScheduledExecutorService`, because an off-screen WebView in a
+background process can have its JS timers throttled. Ticking twice is harmless:
+the game is driven by deadlines, not tick counts.
 
 ## Why so many classes say "no Android imports"
 
@@ -65,5 +72,6 @@ end-to-end by real browsers on a desktop — full games, waves, emergencies — 
 **it has not been run on a physical Android device**, so `AssetManager`, the
 WebView bridge and the UI are unverified. First cut.
 
-A hosting phone also has to stay in the app with the screen on; there is no
-foreground service yet.
+The host *player* still goes idle if they background the app — the ship keeps
+running for everyone else, but a paused WebView stops answering that player's
+own instructions.

@@ -1,7 +1,14 @@
 package io.github.thatmre.spaceteamlan;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.os.IBinder;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
@@ -37,9 +44,12 @@ public class MainActivity extends Activity {
   private static final String PREFS = "spaceteam";
   private static final String KEY_HOST = "host";
 
+  private static final int REQUEST_NOTIFICATIONS = 101;
+
   private WebView webView;
   private HostFinder finder;
-  private HostEngine hostEngine;
+  private HostService hostService;
+  private boolean boundToHost = false;
   private EditText hostInput;
   private TextView statusText;
   private LinearLayout foundList;
@@ -56,6 +66,11 @@ public class MainActivity extends Activity {
     // is the first thing a player needs, and a remembered address is useless if
     // last time's host is not around.
     showSetup(null);
+
+    // ...unless this phone is already hosting, which it will be when the player
+    // comes back from the notification or after a configuration change. Binding
+    // without BIND_AUTO_CREATE attaches to a live service and starts nothing.
+    bindService(new Intent(this, HostService.class), hostConnection, 0);
   }
 
   private SharedPreferences prefs() {
@@ -151,36 +166,98 @@ public class MainActivity extends Activity {
   // ─────────────────────────────── hosting ───────────────────────────────
 
   /**
-   * Run the whole game on this phone: a native listening socket, the game rules
-   * in an off-screen WebView, and this player's own client connecting back to
-   * 127.0.0.1 like anybody else.
+   * Run the whole game on this phone.
+   *
+   * The server and the game engine live in {@link HostService}, not here, so
+   * putting the phone in a pocket does not take the ship down with it — the
+   * Activity is just a client that happens to be on the same device.
    */
   private void startHosting() {
-    if (hostEngine != null) return;
     cancelFinder();
     statusText.setText(R.string.starting_host);
+    askForNotificationPermission();
 
-    hostEngine = new HostEngine(this);
-    hostEngine.start(new HostEngine.Listener() {
-      @Override public void onHosting(int port, String address) {
-        statusText.setText(address == null
-            ? getString(R.string.hosting_no_wifi)
-            : getString(R.string.hosting_at, address + ":" + port));
-        // Join our own ship. The client code has no idea it is the host.
-        connectTo("127.0.0.1:" + port);
-      }
-
-      @Override public void onHostFailed(String reason) {
-        stopHosting();
-        showSetup(reason);
-      }
-    });
+    HostService.start(this);
+    bindService(new Intent(this, HostService.class), hostConnection, Context.BIND_AUTO_CREATE);
   }
 
   private void stopHosting() {
-    if (hostEngine != null) {
-      hostEngine.stop();
-      hostEngine = null;
+    unbindFromHost();
+    HostService.stop(this);
+  }
+
+  private void unbindFromHost() {
+    if (!boundToHost) return;
+    boundToHost = false;
+    if (hostService != null) {
+      hostService.setListener(null);
+      hostService = null;
+    }
+    try {
+      unbindService(hostConnection);
+    } catch (IllegalArgumentException ignored) {
+      // Already unbound.
+    }
+  }
+
+  private final ServiceConnection hostConnection = new ServiceConnection() {
+    @Override
+    public void onServiceConnected(ComponentName name, IBinder binder) {
+      boundToHost = true;
+      hostService = ((HostService.LocalBinder) binder).service();
+      hostService.setListener(new HostService.Listener() {
+        @Override public void onHosting(final int port, final String address) {
+          runOnUiThread(new Runnable() {
+            @Override public void run() {
+              if (statusText != null) {
+                statusText.setText(address == null
+                    ? getString(R.string.hosting_no_wifi)
+                    : getString(R.string.hosting_at, address + ":" + port));
+              }
+              // Join our own ship. The client has no idea it is the host.
+              if (webView == null) connectTo("127.0.0.1:" + port);
+            }
+          });
+        }
+
+        @Override public void onHostFailed(final String reason) {
+          runOnUiThread(new Runnable() {
+            @Override public void run() {
+              unbindFromHost();
+              showSetup(reason);
+            }
+          });
+        }
+      });
+    }
+
+    @Override
+    public void onServiceDisconnected(ComponentName name) {
+      boundToHost = false;
+      hostService = null;
+    }
+  };
+
+  /**
+   * Ask for notification permission, but never block on it: on Android 13+ a
+   * denied prompt only hides the hosting notification, it does not stop the
+   * service.
+   */
+  private void askForNotificationPermission() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
+    if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+      return;
+    }
+    requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS);
+  }
+
+  @Override
+  public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+    super.onRequestPermissionsResult(requestCode, permissions, results);
+    if (requestCode != REQUEST_NOTIFICATIONS) return;
+    boolean granted = results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED;
+    if (!granted && statusText != null) {
+      statusText.setText(R.string.notifications_denied);
     }
   }
 
@@ -281,7 +358,10 @@ public class MainActivity extends Activity {
   @Override
   protected void onDestroy() {
     cancelFinder();
-    stopHosting();
+    // Unbind but leave the service running: backgrounding or a configuration
+    // change must not throw the rest of the crew out of their game. The service
+    // stops itself when the task is swiped away, or from its own notification.
+    unbindFromHost();
     if (webView != null) {
       webView.destroy();
       webView = null;

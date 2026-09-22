@@ -255,3 +255,41 @@ test('a native side without status support is tolerated', () => {
   host.startStatusUpdates(50);
   host.shutdown();
 });
+
+test('an external tick keeps the game moving when JS timers are throttled', async () => {
+  const wire = fakeNative();
+  const host = createHost(wire.native);
+
+  const { code } = phone(host, wire, 'c1', C2S.CREATE, { name: 'ADA' });
+  phone(host, wire, 'c2', C2S.JOIN, { code, name: 'BO' });
+  host.message('c2', JSON.stringify({ t: C2S.READY, ready: true }));
+  host.message('c1', JSON.stringify({ t: C2S.START }));
+
+  // Simulate the WebView's own timers being starved: stop every room's
+  // interval, leaving the native tick as the only thing driving the game.
+  const room = [...host.rooms.rooms.values()][0];
+  room.stopTimer();
+
+  const deadline = Date.now() + 12_000;
+  while (Date.now() < deadline && !wire.last('c1', S2C.INSTRUCTION)) {
+    host.tick();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  assert.ok(wire.last('c1', S2C.INSTRUCTION), 'the external tick must get past the countdown');
+  assert.equal(room.game.phase, PHASE.PLAYING);
+  host.shutdown();
+});
+
+test('ticking is safe before a game starts and after it ends', () => {
+  const wire = fakeNative();
+  const host = createHost(wire.native);
+
+  host.tick(); // no rooms at all
+  phone(host, wire, 'c1', C2S.CREATE, { name: 'ADA' });
+  host.tick(); // a room, but still in the lobby
+  assert.equal(host.status().rooms, 1);
+
+  host.shutdown();
+  host.tick(); // after shutdown
+});

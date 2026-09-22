@@ -38,6 +38,7 @@ public final class HostEngine {
 
   private WebView engine;
   private HostServer server;
+  private StatusListener statusListener;
   private boolean engineReady = false;
   /** Frames that arrived before the engine finished booting. */
   private final java.util.ArrayDeque<String> pending = new java.util.ArrayDeque<>();
@@ -50,12 +51,33 @@ public final class HostEngine {
     void onHostFailed(String reason);
   }
 
+  /** Crew updates from the engine, for the hosting notification. */
+  public interface StatusListener {
+    void onStatus(String json);
+  }
+
   public HostEngine(Context context) {
     this.context = context;
   }
 
   public int port() {
     return server == null ? -1 : server.port();
+  }
+
+  public void setStatusListener(StatusListener listener) {
+    this.statusListener = listener;
+  }
+
+  /**
+   * Advance every running game.
+   *
+   * Called from a real scheduler by {@link HostService}: the engine drives
+   * itself on a JS interval too, but an off-screen WebView in a backgrounded
+   * process can have its timers throttled, which would quietly stall a game
+   * everyone else is still playing.
+   */
+  public void tick() {
+    deliver("window.spaceteamHost && window.spaceteamHost.tick()");
   }
 
   /** Start listening and boot the engine. Must be called on the main thread. */
@@ -199,9 +221,9 @@ public final class HostEngine {
     /** The engine reports the crew so /discover can advertise it. */
     @JavascriptInterface
     public void status(String json) {
-      if (server != null) {
-        server.setDiscoveryJson(json);
-      }
+      if (server != null) server.setDiscoveryJson(json);
+      StatusListener listener = statusListener;
+      if (listener != null) listener.onStatus(json);
     }
   }
 }
