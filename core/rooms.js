@@ -12,10 +12,24 @@ const EMPTY_ROOM_GRACE_MS = 60_000;
 
 let nextPlayerId = 1;
 
+/**
+ * A secret handed to each player so a dropped phone can prove which seat was
+ * theirs. Names are not enough: they collide, and they are guessable by anyone
+ * else on the WiFi who watched the lobby.
+ */
+function makeToken() {
+  let token = '';
+  for (let i = 0; i < 4; i++) token += Math.random().toString(36).slice(2, 10);
+  return token;
+}
+
 function sanitizeName(raw) {
   const name = String(raw ?? '').replace(/\s+/g, ' ').trim().slice(0, LIMITS.NAME_MAX);
   return name || `Crew ${Math.floor(Math.random() * 90 + 10)}`;
 }
+
+/** Stands in for a departed connection so nothing has to null-check sends. */
+const SILENT_CONNECTION = { send() {} };
 
 export class Room {
   constructor(code, manager) {
@@ -38,7 +52,9 @@ export class Room {
   }
 
   broadcast(message) {
-    for (const player of this.players.values()) player.connection.send(message);
+    for (const player of this.players.values()) {
+      if (player.connected) player.connection.send(message);
+    }
   }
 
   get isEmpty() {
@@ -54,19 +70,104 @@ export class Room {
     }
 
     const id = `p${nextPlayerId++}`;
-    const player = { id, name: sanitizeName(rawName), ready: false, connection };
+    const player = {
+      id,
+      name: sanitizeName(rawName),
+      ready: false,
+      connection,
+      token: makeToken(),
+      connected: true,
+      graceTimer: null,
+    };
     this.players.set(id, player);
     if (!this.hostId) this.hostId = id;
     this.emptySince = null;
 
-    connection.send({ t: S2C.WELCOME, playerId: id, code: this.code, isHost: this.hostId === id });
+    connection.send({
+      t: S2C.WELCOME,
+      playerId: id,
+      code: this.code,
+      isHost: this.hostId === id,
+      token: player.token,
+      resumed: false,
+    });
     this.pushLobby();
     return { player };
+  }
+
+  /**
+   * Put a dropped player back in their own seat, with their own console.
+   *
+   * Only valid mid-game: a drop in the lobby just removes you, and rejoining
+   * there is a normal join.
+   */
+  resume(connection, token) {
+    const player = [...this.players.values()].find((p) => p.token === token);
+    if (!player) {
+      return { error: 'That seat is gone. The crew may have given up on you.' };
+    }
+    if (player.connected) {
+      return { error: 'Somebody is already aboard in that seat.' };
+    }
+
+    this.clearGrace(player);
+    player.connection = connection;
+    player.connected = true;
+
+    connection.send({
+      t: S2C.WELCOME,
+      playerId: player.id,
+      code: this.code,
+      isHost: this.hostId === player.id,
+      token: player.token,
+      resumed: true,
+    });
+    this.pushLobby();
+    this.broadcast({ t: S2C.CREW, name: player.name, connected: true });
+
+    if (this.phase === PHASE.PLAYING) this.game.setConnected(player.id, true);
+    return { player };
+  }
+
+  /**
+   * A connection went away. Mid-game that starts a grace period rather than
+   * emptying the seat, so a phone that slept or lost WiFi can come back to the
+   * console it was using.
+   */
+  disconnect(playerId) {
+    const player = this.players.get(playerId);
+    if (!player || !player.connected) return;
+
+    if (this.phase !== PHASE.PLAYING) {
+      this.remove(playerId);
+      return;
+    }
+
+    player.connected = false;
+    player.connection = SILENT_CONNECTION;
+    this.game.setConnected(playerId, false);
+    this.broadcast({ t: S2C.CREW, name: player.name, connected: false });
+    this.pushLobby();
+
+    // If nobody comes back, the seat is eventually cleared for good.
+    player.graceTimer = setTimeout(() => {
+      player.graceTimer = null;
+      this.remove(playerId);
+    }, LIMITS.RESUME_GRACE_MS);
+
+    if (this.game.isOver) this.finish();
+  }
+
+  clearGrace(player) {
+    if (!player.graceTimer) return;
+    clearTimeout(player.graceTimer);
+    player.graceTimer = null;
   }
 
   remove(playerId) {
     const player = this.players.get(playerId);
     if (!player) return;
+    this.clearGrace(player);
     this.players.delete(playerId);
 
     if (this.hostId === playerId) {
@@ -96,14 +197,18 @@ export class Room {
     if (this.phase !== PHASE.LOBBY) return { error: 'Already flying.' };
     if (this.players.size < LIMITS.MIN_PLAYERS) return { error: 'Nobody aboard.' };
 
-    const slackers = [...this.players.values()].filter((p) => p.id !== this.hostId && !p.ready);
+    const slackers = [...this.players.values()].filter(
+      (p) => p.id !== this.hostId && p.connected && !p.ready,
+    );
     if (slackers.length) {
       return { error: `Waiting on ${slackers.map((p) => p.name).join(', ')}.` };
     }
 
     this.phase = PHASE.PLAYING;
     this.lastResult = null;
-    this.game.start([...this.players.values()].map(({ id, name }) => ({ id, name })));
+    this.game.start(
+      [...this.players.values()].filter((p) => p.connected).map(({ id, name }) => ({ id, name })),
+    );
     this.pushLobby();
     this.startTimer();
     return {};
@@ -121,6 +226,11 @@ export class Room {
   finish() {
     this.stopTimer();
     this.phase = PHASE.LOBBY;
+    // Seats are only held for the duration of a run.
+    for (const player of [...this.players.values()]) {
+      this.clearGrace(player);
+      if (!player.connected) this.players.delete(player.id);
+    }
     this.lastResult = { score: this.game.score, wave: this.game.wave };
     for (const player of this.players.values()) player.ready = false;
     this.pushLobby();
@@ -151,6 +261,7 @@ export class Room {
         name: p.name,
         ready: p.ready,
         isHost: p.id === this.hostId,
+        connected: p.connected,
       })),
     });
   }
@@ -235,6 +346,17 @@ export class RoomManager {
           break;
         }
 
+        case C2S.RESUME: {
+          if (session.room) return;
+          const room = this.get(msg.code);
+          if (!room) return fail(`No ship with code ${String(msg.code ?? '').toUpperCase()}.`, true);
+          const { player, error } = room.resume(connection, String(msg.token ?? ''));
+          if (error) return fail(error, true);
+          session.room = room;
+          session.playerId = player.id;
+          break;
+        }
+
         case C2S.READY:
           session.room?.setReady(session.playerId, msg.ready);
           break;
@@ -270,7 +392,9 @@ export class RoomManager {
     });
 
     connection.on('close', () => {
-      if (session.room) session.room.remove(session.playerId);
+      // Mid-game this holds the seat open for a while instead of emptying it;
+      // in the lobby it is an immediate removal.
+      if (session.room) session.room.disconnect(session.playerId);
       session.room = null;
       session.playerId = null;
     });

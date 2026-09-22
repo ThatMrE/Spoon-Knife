@@ -169,6 +169,11 @@ context, and there is no certificate to be had for `http://192.168.1.24`.
 * From wave 2, whole-crew emergencies interrupt everything: everybody has to
   shake, tilt, or flip their phone at once. There's always a giant button too,
   so it still works if the phone has no motion sensors or you deny the prompt.
+* **If your phone drops out, it rejoins by itself.** Sleep it, walk out of
+  range, lose WiFi — the app retries in the background and puts you back on
+  *your own* console. Your seat is held for 90 seconds, your orders are
+  cancelled rather than failed, and nobody is sent after your gizmos while you
+  are gone, so a dropout costs the ship nothing.
 
 Works with 1–8 players. Solo is a decent tutorial; it's a party game from three
 up.
@@ -243,10 +248,8 @@ CI runs the Node suite on Node 20, 22, 24 and 26, and builds the APK.
 
 ## Known limitations
 
-* **No reconnection.** If a phone sleeps or drops WiFi mid-game, that player
-  leaves the crew and their console goes with them; the run continues without
-  them. Rejoining means waiting for the next game. (The Android app keeps the
-  screen awake, which removes the most common cause.)
+* A phone that stays away longer than 90 seconds loses its seat, and the crew
+  carries on without it.
 * **The Android app has not been run on a physical device by its author.** It
   builds, its logic is unit-tested, and the Java host has been driven
   end-to-end by real browsers on a desktop — but the Android-specific parts
@@ -263,7 +266,6 @@ CI runs the Node suite on Node 20, 22, 24 and 26, and builds the APK.
 
 ## Roadmap
 
-* Reconnect-by-name within a grace period
 * More gizmo kinds (keypads, sequences, "hold for 3 seconds")
 * A proper score history, and per-crew records
 * Optional QR code in the terminal so nobody has to type an IP address

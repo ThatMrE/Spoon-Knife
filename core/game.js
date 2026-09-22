@@ -79,6 +79,18 @@ export class Game {
     return this.players.size;
   }
 
+  /**
+   * Players who can actually act right now.
+   *
+   * Difficulty deliberately still uses the full roster: a wave's goal should
+   * not lurch about because somebody's phone blinked.
+   */
+  get connectedCount() {
+    let count = 0;
+    for (const player of this.players.values()) if (player.connected) count++;
+    return count;
+  }
+
   get isOver() {
     return this.phase === PHASE.OVER;
   }
@@ -96,7 +108,7 @@ export class Game {
     this.missed = 0;
     this.players.clear();
     for (const { id, name } of roster) {
-      this.players.set(id, { id, name, panel: [], instruction: null });
+      this.players.set(id, { id, name, panel: [], instruction: null, connected: true });
     }
     this._dealPanels();
     this.progress = 0;
@@ -130,6 +142,58 @@ export class Game {
   }
 
   // ------------------------------------------------------------ crew changes
+
+  /**
+   * A player's phone dropped off, or came back.
+   *
+   * Their console is kept either way — that is the whole point of being able to
+   * rejoin — but while they are away it must not be targeted, because nobody
+   * can reach it. Their own instruction is dropped without costing hull: a WiFi
+   * hiccup should not damage the ship.
+   */
+  setConnected(playerId, connected, now = Date.now()) {
+    const player = this.players.get(playerId);
+    if (!player || player.connected === connected) return;
+    player.connected = connected;
+
+    if (this.phase !== PHASE.PLAYING && this.phase !== PHASE.COUNTDOWN) return;
+
+    if (!connected) {
+      // Drop their order silently — no 'expired', so no damage.
+      if (player.instruction) {
+        this.transport.toPlayer(player.id, {
+          t: S2C.RESOLVED,
+          id: player.instruction.id,
+          ok: false,
+          reason: 'dropped',
+        });
+        player.instruction = null;
+      }
+
+      if (this.allHands) {
+        this.allHands.pending.delete(playerId);
+        if (this.allHands.pending.size === 0) this._resolveAllHands(true, now);
+      } else {
+        // Anything pointing at their console is now unreachable.
+        for (const other of this.players.values()) {
+          if (!other.instruction || !other.connected) continue;
+          const entry = this.controls.get(other.instruction.controlId);
+          if (!entry || entry.ownerId === playerId) this._resolve(other, false, 'gone', now);
+        }
+      }
+      this._pushState();
+      return;
+    }
+
+    // Back aboard: hand back the same console, then a fresh order.
+    this.transport.toPlayer(player.id, {
+      t: S2C.PANEL,
+      wave: this.wave,
+      controls: player.panel.map(publicControl),
+    });
+    this._pushState();
+    if (this.phase === PHASE.PLAYING && !this.allHands) this._issue(player, now);
+  }
 
   /**
    * A player dropped off the WiFi mid-run. Their console goes with them, so
@@ -168,6 +232,7 @@ export class Game {
   /** A client reports touching one of its own controls. */
   handleControl(playerId, controlId, value, now = Date.now()) {
     if (this.phase !== PHASE.PLAYING || this.allHands) return;
+    if (!this.players.get(playerId)?.connected) return;
     const entry = this.controls.get(controlId);
     if (!entry || entry.ownerId !== playerId) return;
     if (!applyInput(entry.control, value)) return;
@@ -185,7 +250,7 @@ export class Game {
 
   /** A client reports a shake/tilt/flip, or taps the on-screen fallback. */
   handleMotion(playerId, kind, now = Date.now()) {
-    if (!this.allHands || !this.players.has(playerId)) return;
+    if (!this.allHands || !this.players.get(playerId)?.connected) return;
     if (kind !== this.allHands.kind) return;
     if (!this.allHands.pending.delete(playerId)) return;
 
@@ -235,7 +300,7 @@ export class Game {
 
   _issueAll(now) {
     for (const player of this.players.values()) {
-      if (!player.instruction) this._issue(player, now);
+      if (player.connected && !player.instruction) this._issue(player, now);
     }
   }
 
@@ -249,7 +314,11 @@ export class Game {
       if (other.instruction) targeted.add(other.instruction.controlId);
     }
 
-    const free = [...this.controls.values()].filter((entry) => !targeted.has(entry.control.id));
+    // A console belonging to someone who has dropped off cannot be reached, so
+    // it is not a legal target until they rejoin.
+    const free = [...this.controls.values()].filter(
+      (entry) => !targeted.has(entry.control.id) && this.players.get(entry.ownerId)?.connected,
+    );
     if (free.length === 0) return; // tiny crew, everything is spoken for
 
     const others = free.filter((entry) => entry.ownerId !== player.id);
@@ -305,7 +374,9 @@ export class Game {
       this._completeWave(now);
       return;
     }
-    if (this.phase === PHASE.PLAYING && !this.allHands) this._issue(player, now);
+    if (this.phase === PHASE.PLAYING && !this.allHands && player.connected) {
+      this._issue(player, now);
+    }
   }
 
   _tickInstructions(now) {
@@ -321,6 +392,11 @@ export class Game {
 
   _maybeAllHands(now) {
     const { allHandsChance } = difficulty(this.wave, this.playerCount);
+    // An emergency nobody is present for would resolve itself instantly.
+    if (this.connectedCount === 0) {
+      this.nextAllHandsAt = now + ALL_HANDS_RETRY_MS;
+      return false;
+    }
     if (allHandsChance === 0 || this.random() > allHandsChance) {
       // Not this time — check again shortly rather than every tick.
       this.nextAllHandsAt = now + ALL_HANDS_RETRY_MS;
@@ -343,7 +419,9 @@ export class Game {
     this.allHands = {
       id: `ah${this._nextInstructionId++}`,
       kind,
-      pending: new Set(this.players.keys()),
+      pending: new Set(
+        [...this.players.values()].filter((p) => p.connected).map((p) => p.id),
+      ),
       expiresAt: now + ALL_HANDS_WINDOW_MS,
     };
     this.transport.toAll({
@@ -369,10 +447,12 @@ export class Game {
     this.transport.toAll({ t: S2C.ALL_HANDS_DONE, id, ok, pending: [...pending] });
 
     if (ok) {
-      // Pulling together is worth a chunk of the wave.
-      this.completed += this.playerCount;
-      this.progress += this.playerCount;
-      this.score += 25 * this.wave * this.playerCount;
+      // Pulling together is worth a chunk of the wave, counted by the crew who
+      // were actually there to do it.
+      const crew = Math.max(1, this.connectedCount);
+      this.completed += crew;
+      this.progress += crew;
+      this.score += 25 * this.wave * crew;
     } else {
       this.missed++;
       this.hull -= Math.round(difficulty(this.wave, this.playerCount).damage * 1.5);
