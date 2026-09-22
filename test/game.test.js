@@ -231,6 +231,151 @@ test('a player dropping off the WiFi tears down orders that pointed at them', ()
   assert.ok(game.controls.has(reissued.controlId), 'and points somewhere that still exists');
 });
 
+test('a dropped phone keeps its console and costs no hull', () => {
+  const { game, rec, now } = launch();
+  const before = game.hull;
+  const panel = game.players.get('p2').panel.map((c) => c.id);
+  rec.clear();
+
+  game.setConnected('p2', false, now);
+
+  assert.equal(game.hull, before, 'a WiFi hiccup must not damage the ship');
+  assert.equal(game.connectedCount, 2);
+  assert.equal(game.players.get('p2').instruction, null, 'their order is dropped');
+  assert.equal(rec.last(S2C.RESOLVED, 'p2').reason, 'dropped', 'dropped, not expired');
+  for (const id of panel) {
+    assert.ok(game.controls.has(id), 'their console is kept for when they return');
+  }
+});
+
+test('nobody is sent after a console whose owner has dropped off', () => {
+  for (let seed = 1; seed <= 25; seed++) {
+    const { game, now } = launch({ seed });
+    game.setConnected('p3', false, now);
+
+    // Play a few rounds and check p3's gizmos are never targeted while away.
+    let clock = now;
+    for (let round = 0; round < 8 && game.phase === PHASE.PLAYING; round++) {
+      for (const id of ['p1', 'p2']) {
+        const player = game.players.get(id);
+        if (!player.instruction) continue;
+        const { ownerId } = game.controls.get(player.instruction.controlId);
+        assert.notEqual(ownerId, 'p3', `seed ${seed}: targeted an absent console`);
+        obey(game, id, clock);
+      }
+      clock += 400;
+      game.tick(clock);
+    }
+  }
+});
+
+test('an order already pointing at a dropping player is reissued, not failed', () => {
+  const { game, rec, now } = launch();
+
+  // Force p1 at one of p3's gizmos, then drop p3.
+  const target = game.players.get('p3').panel[0];
+  game.players.get('p1').instruction = {
+    id: 'forced',
+    controlId: target.id,
+    requirement: { value: 'anything' },
+    text: 'x',
+    issuedAt: now,
+    expiresAt: now + 10_000,
+  };
+  const before = game.hull;
+  rec.clear();
+
+  game.setConnected('p3', false, now);
+
+  assert.equal(game.hull, before, 'reissuing must not cost hull');
+  const reissued = game.players.get('p1').instruction;
+  assert.ok(reissued);
+  assert.notEqual(reissued.id, 'forced');
+  assert.notEqual(game.controls.get(reissued.controlId).ownerId, 'p3');
+});
+
+test('coming back hands over the same console and a fresh order', () => {
+  const { game, rec, now } = launch();
+  const before = game.players.get('p2').panel.map((c) => c.id);
+
+  game.setConnected('p2', false, now);
+  rec.clear();
+  game.setConnected('p2', true, now);
+
+  const panel = rec.last(S2C.PANEL, 'p2');
+  assert.ok(panel, 'their console is sent again');
+  assert.deepEqual(panel.controls.map((c) => c.id), before, 'the very same gizmos');
+  assert.ok(game.players.get('p2').instruction, 'and they are put back to work');
+  assert.equal(game.connectedCount, 3);
+});
+
+test('an absent player cannot act, and their gizmos cannot be operated', () => {
+  const { game, rec, now } = launch();
+  const instruction = game.players.get('p1').instruction;
+  const { control, ownerId } = game.controls.get(instruction.controlId);
+
+  game.setConnected(ownerId, false, now);
+  rec.clear();
+
+  // The owner is gone, so nothing they hold can be moved.
+  game.handleControl(ownerId, control.id, instruction.requirement.value, now);
+  assert.equal(rec.of(S2C.RESOLVED).length, 0);
+  assert.equal(game.progress, 0);
+});
+
+test('an emergency only waits for the crew who are actually present', () => {
+  const { game, rec, now } = launch();
+  game.setConnected('p3', false, now);
+
+  game.wave = 4;
+  game.nextAllHandsAt = now;
+  game.random = () => 0;
+  game.tick(now);
+
+  const alert = rec.last(S2C.ALL_HANDS);
+  assert.ok(alert);
+  assert.equal(game.allHands.pending.size, 2, 'the absent player is not waited on');
+
+  game.handleMotion('p3', alert.kind, now);
+  assert.equal(game.allHands.pending.size, 2, 'and cannot answer it either');
+
+  game.handleMotion('p1', alert.kind, now);
+  game.handleMotion('p2', alert.kind, now);
+  assert.equal(game.allHands, null);
+  assert.equal(rec.last(S2C.ALL_HANDS_DONE).ok, true);
+  assert.equal(game.progress, 2, 'credited to the two who were there');
+});
+
+test('no emergency fires while the whole crew is offline', () => {
+  const { game, rec, now } = launch();
+  for (const id of ['p1', 'p2', 'p3']) game.setConnected(id, false, now);
+  rec.clear();
+
+  game.wave = 4;
+  game.nextAllHandsAt = now;
+  game.random = () => 0;
+  game.tick(now);
+
+  assert.equal(rec.of(S2C.ALL_HANDS).length, 0, 'it would resolve itself instantly');
+  assert.equal(game.allHands, null);
+});
+
+test('a game with nobody connected stalls rather than losing the ship', () => {
+  const { game, now } = launch();
+  const hull = game.hull;
+  for (const id of ['p1', 'p2', 'p3']) game.setConnected(id, false, now);
+
+  // Well past every deadline: with no orders outstanding nothing can expire.
+  let clock = now;
+  for (let i = 0; i < 100; i++) {
+    clock += 500;
+    game.tick(clock);
+  }
+
+  assert.equal(game.phase, PHASE.PLAYING, 'the run waits for them');
+  assert.equal(game.hull, hull, 'and takes no damage in the meantime');
+});
+
 test('the run ends if the last crew member leaves', () => {
   const { game, rec, now } = launch({ crew: [{ id: 'solo', name: 'Solo' }] });
   game.removePlayer('solo', now);

@@ -292,6 +292,121 @@ test('a bogus control value is ignored without disturbing the game', async () =>
   assert.ok(host.socket.writable);
 });
 
+/** Start a two-player game and return both clients plus the code. */
+async function launchedGame() {
+  const host = await connect();
+  host.send(C2S.CREATE, { name: 'ADA' });
+  const welcome = await host.waitFor(S2C.WELCOME);
+
+  const mate = await connect();
+  mate.send(C2S.JOIN, { code: welcome.code, name: 'BO' });
+  const mateWelcome = await mate.waitFor(S2C.WELCOME);
+  mate.send(C2S.READY, { ready: true });
+  host.send(C2S.START);
+
+  await host.waitFor(S2C.PANEL);
+  const matePanel = await mate.waitFor(S2C.PANEL);
+  return { host, mate, code: welcome.code, mateToken: mateWelcome.token, matePanel };
+}
+
+test('every player is given a token so a dropped phone can prove its seat', async () => {
+  const host = await connect();
+  host.send(C2S.CREATE, { name: 'ADA' });
+  const welcome = await host.waitFor(S2C.WELCOME);
+
+  assert.equal(typeof welcome.token, 'string');
+  assert.ok(welcome.token.length >= 16, 'not something a bystander could guess');
+  assert.equal(welcome.resumed, false);
+});
+
+test('a phone that drops mid-game can rejoin its own console', async () => {
+  const { host, code, mateToken, matePanel } = await launchedGame();
+
+  // The phone goes to sleep: FIN, and the seat is held open.
+  const mate = clients[clients.length - 1];
+  mate.closeGracefully();
+  const dropped = await host.waitFor(S2C.CREW);
+  assert.equal(dropped.name, 'BO');
+  assert.equal(dropped.connected, false);
+
+  // It wakes up and resumes with its token.
+  const returning = await connect();
+  returning.send(C2S.RESUME, { code, token: mateToken });
+  const welcome = await returning.waitFor(S2C.WELCOME);
+
+  assert.equal(welcome.resumed, true, 'the client is told this was a rejoin');
+  assert.equal(welcome.code, code);
+
+  const panel = await returning.waitFor(S2C.PANEL);
+  assert.deepEqual(
+    panel.controls.map((c) => c.id),
+    matePanel.controls.map((c) => c.id),
+    'the very same console, or the shouting makes no sense',
+  );
+  assert.ok(await returning.waitFor(S2C.INSTRUCTION), 'and they are put back to work');
+
+  const back = host.all(S2C.CREW).filter((m) => m.connected);
+  assert.equal(back.length >= 1, true, 'the crew is told they are back');
+});
+
+test('the crew roster shows who is missing rather than dropping them', async () => {
+  const { host } = await launchedGame();
+
+  const mate = clients[clients.length - 1];
+  mate.closeGracefully();
+  await host.waitFor(S2C.CREW);
+
+  const deadline = Date.now() + 5000;
+  let roster;
+  while (Date.now() < deadline) {
+    const lobbies = host.all(S2C.LOBBY);
+    const latest = lobbies[lobbies.length - 1];
+    if (latest && latest.players.some((p) => p.connected === false)) {
+      roster = latest;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  assert.ok(roster, 'the roster was never updated');
+  assert.equal(roster.players.length, 2, 'the seat is still theirs');
+  assert.deepEqual(
+    roster.players.map((p) => [p.name, p.connected]),
+    [['ADA', true], ['BO', false]],
+  );
+});
+
+test('a wrong token is refused without disturbing the seat', async () => {
+  const { host, code, mateToken } = await launchedGame();
+  const mate = clients[clients.length - 1];
+  mate.closeGracefully();
+  await host.waitFor(S2C.CREW);
+
+  const impostor = await connect();
+  impostor.send(C2S.RESUME, { code, token: 'not-a-real-token' });
+  assert.match((await impostor.waitFor(S2C.ERROR)).message, /seat is gone/i);
+
+  // The seat is untouched, so the real phone can still come back.
+  const returning = await connect();
+  returning.send(C2S.RESUME, { code, token: mateToken });
+  assert.equal((await returning.waitFor(S2C.WELCOME)).resumed, true);
+});
+
+test('resuming a seat somebody is already sitting in is refused', async () => {
+  const { code, mateToken } = await launchedGame();
+
+  const second = await connect();
+  second.send(C2S.RESUME, { code, token: mateToken });
+  const error = await second.waitFor(S2C.ERROR);
+  assert.match(error.message, /already aboard/i);
+});
+
+test('resuming into a ship that does not exist is refused', async () => {
+  const stray = await connect();
+  stray.send(C2S.RESUME, { code: 'ZZZZ', token: 'whatever' });
+  assert.match((await stray.waitFor(S2C.ERROR)).message, /ZZZZ/);
+});
+
 test('a crewmate disconnecting is announced to whoever is left', async () => {
   const host = await connect();
   host.send(C2S.CREATE, { name: 'ADA' });

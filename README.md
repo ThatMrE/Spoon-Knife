@@ -22,7 +22,14 @@ else opens a URL.
 └─────────────────────────┘        └─────────────────────────┘
 ```
 
-## Two ways to run it
+## Three ways to play
+
+**Solo practice, in any browser.** A static copy is deployed at
+[sociovia.netlify.app](https://sociovia.netlify.app). There is no server behind
+it, so it runs the game *inside the page* — one console, no shouting, good for
+learning the panel. Multiplayer needs one of the two below.
+
+## Two ways to run the real thing
 
 **On a phone, with no laptop at all.** Install the Android app, tap *Host a game
 on this phone*, and everyone else taps *Find ships on this WiFi*. See
@@ -53,6 +60,17 @@ four-letter code out loud; everybody else types it in. The host taps **LAUNCH**
 once the crew is ready.
 
 Set `PORT` to use a different port: `PORT=8080 node server/index.js`.
+
+### Why the hosted copy is solo only
+
+Static hosting cannot keep a WebSocket server alive, and multiplayer needs one
+authority over the hull and the instructions. Rather than ship a page whose
+buttons fail, the client asks `/discover` on load: if nothing answers, it hides
+the multiplayer controls, says why, and offers practice instead.
+
+Practice works because `core/` has no Node APIs, so the page can be both server
+and client — the same trick the Android host uses, with an in-page transport
+(`public/js/loopback.js`) in place of a socket.
 
 ### It has to be the same WiFi
 
@@ -169,6 +187,11 @@ context, and there is no certificate to be had for `http://192.168.1.24`.
 * From wave 2, whole-crew emergencies interrupt everything: everybody has to
   shake, tilt, or flip their phone at once. There's always a giant button too,
   so it still works if the phone has no motion sensors or you deny the prompt.
+* **If your phone drops out, it rejoins by itself.** Sleep it, walk out of
+  range, lose WiFi — the app retries in the background and puts you back on
+  *your own* console. Your seat is held for 90 seconds, your orders are
+  cancelled rather than failed, and nobody is sent after your gizmos while you
+  are gone, so a dropout costs the ship nothing.
 
 Works with 1–8 players. Solo is a decent tutorial; it's a party game from three
 up.
@@ -213,6 +236,16 @@ what a shared-state game wants. The Node server and the Android host are two
 transports in front of the same `core/`, so which device hosts changes nothing
 about the rules.
 
+## Deploying the static copy
+
+`netlify.toml` builds with `node tools/build-site.mjs`, which stages `public/`,
+`shared/` and `core/` into `site/` — the client imports modules from outside
+`public/`, so the tree has to be assembled rather than published straight from a
+source directory. The build fails loudly if any required file is missing, since
+a partial copy would deploy a page that 404s on its own modules.
+
+Pushing to `master` deploys; pull requests get their own preview.
+
 ## Tests
 
 ```sh
@@ -243,10 +276,8 @@ CI runs the Node suite on Node 20, 22, 24 and 26, and builds the APK.
 
 ## Known limitations
 
-* **No reconnection.** If a phone sleeps or drops WiFi mid-game, that player
-  leaves the crew and their console goes with them; the run continues without
-  them. Rejoining means waiting for the next game. (The Android app keeps the
-  screen awake, which removes the most common cause.)
+* A phone that stays away longer than 90 seconds loses its seat, and the crew
+  carries on without it.
 * **The Android app has not been run on a physical device by its author.** It
   builds, its logic is unit-tested, and the Java host has been driven
   end-to-end by real browsers on a desktop — but the Android-specific parts
@@ -263,7 +294,6 @@ CI runs the Node suite on Node 20, 22, 24 and 26, and builds the APK.
 
 ## Roadmap
 
-* Reconnect-by-name within a grace period
 * More gizmo kinds (keypads, sequences, "hold for 3 seconds")
 * A proper score history, and per-crew records
 * Optional QR code in the terminal so nobody has to type an IP address

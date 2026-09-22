@@ -8,6 +8,11 @@ export class Net {
     this._queue = [];
   }
 
+  /** True while a socket is open. */
+  get isOpen() {
+    return this.socket?.readyState === WebSocket.OPEN;
+  }
+
   connect() {
     return new Promise((resolve, reject) => {
       const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -19,7 +24,11 @@ export class Net {
         resolve();
       });
       socket.addEventListener('error', () => reject(new Error('Could not reach the ship.')));
-      socket.addEventListener('close', () => this.onDown());
+      socket.addEventListener('close', () => {
+        // Only the current socket may report the connection as down; a socket
+        // replaced by a reconnect must not fire a late close over the new one.
+        if (this.socket === socket) this.onDown();
+      });
       socket.addEventListener('message', (event) => {
         let message;
         try {

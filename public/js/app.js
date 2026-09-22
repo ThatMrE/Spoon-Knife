@@ -3,6 +3,7 @@
  */
 import { ALL_HANDS, C2S, PHASE, S2C } from '/shared/protocol.js';
 import { Net } from '/js/net.js';
+import { Loopback } from '/js/loopback.js';
 import { buzz, sfx, unlockAudio } from '/js/feedback.js';
 import { MotionWatcher } from '/js/motion.js';
 import { renderGizmo } from '/js/gizmos.js';
@@ -11,6 +12,8 @@ const $ = (id) => document.getElementById(id);
 
 const el = {
   screens: { home: $('screen-home'), lobby: $('screen-lobby'), game: $('screen-game') },
+  staticNote: $('static-note'),
+  multiplayer: $('multiplayer-controls'),
   name: $('input-name'),
   code: $('input-code'),
   homeHint: $('home-hint'),
@@ -47,6 +50,9 @@ const el = {
   overStats: $('over-stats'),
   btnAgain: $('btn-again'),
   dead: $('overlay-dead'),
+  deadReason: $('dead-reason'),
+  rejoin: $('overlay-rejoin'),
+  rejoinSub: $('rejoin-sub'),
   toast: $('toast'),
 };
 
@@ -56,9 +62,59 @@ const state = {
   ready: false,
   connected: false,
   allHandsId: null,
+  /** What a dropped phone needs to get its own seat back. */
+  seat: null,
+  rejoining: false,
+  rejoinAttempt: 0,
 };
 
-const net = new Net();
+/**
+ * The seat is kept in sessionStorage rather than localStorage on purpose: it is
+ * only good for the game in progress, and a stale token from yesterday would
+ * just produce a confusing refusal on the next launch.
+ */
+const SEAT_KEY = 'spaceteam:seat';
+
+/** Hold the seat in memory; it only becomes resumable once a game is running. */
+function holdSeat(seat) {
+  state.seat = seat;
+}
+
+/**
+ * Make the seat resumable. Called when the console arrives, because only a
+ * running game has a console worth holding — dropping out of a lobby should
+ * send you back to the start screen, not into a retry loop.
+ */
+function armSeat() {
+  if (!state.seat) return;
+  try {
+    sessionStorage.setItem(SEAT_KEY, JSON.stringify(state.seat));
+  } catch {
+    // Private mode or blocked storage: reconnection then will not survive a
+    // page reload, which is not worth failing over.
+  }
+}
+
+function recallSeat() {
+  try {
+    const raw = sessionStorage.getItem(SEAT_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // Fall through to whatever is in memory.
+  }
+  return null;
+}
+
+function forgetSeat() {
+  state.seat = null;
+  try {
+    sessionStorage.removeItem(SEAT_KEY);
+  } catch {
+    // Nothing to do.
+  }
+}
+
+let net = new Net();
 const motion = new MotionWatcher((kind) => net.send(C2S.MOTION, { kind }));
 
 // ───────────────────────────────── helpers ─────────────────────────────────
@@ -68,8 +124,9 @@ function show(name) {
 }
 
 let toastTimer = null;
-function toast(message) {
+function toast(message, kind = 'warn') {
   el.toast.textContent = message;
+  el.toast.classList.toggle('is-info', kind === 'info');
   el.toast.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
@@ -140,6 +197,19 @@ async function enter(type, extra) {
 }
 
 $('btn-create').addEventListener('click', () => enter(C2S.CREATE));
+
+$('btn-solo').addEventListener('click', async () => {
+  const name = el.name.value.trim() || 'SOLO';
+  localStorage.setItem('spaceteam:name', name);
+  el.homeHint.textContent = '';
+
+  // No server involved: the page runs the rules itself.
+  net = wire(new Loopback());
+  net.onDown = () => giveUp('Practice ended.');
+  await net.connect();
+  net.send(C2S.CREATE, { name });
+  net.send(C2S.START);
+});
 $('btn-join').addEventListener('click', () => {
   const code = el.code.value.trim().toUpperCase();
   if (code.length !== 4) {
@@ -165,6 +235,8 @@ el.btnStart.addEventListener('click', async () => {
 });
 
 $('btn-leave').addEventListener('click', () => {
+  state.rejoining = false;
+  forgetSeat();
   net.send(C2S.LEAVE);
   location.reload();
 });
@@ -185,12 +257,38 @@ el.allHandsBtn.addEventListener('click', () => {
 
 // ───────────────────────────── server messages ─────────────────────────────
 
-net
+/**
+ * Attach the game's message handlers to a transport.
+ *
+ * Called for the WebSocket at startup and again for the in-page transport when
+ * somebody practises solo; the handlers cannot tell which one they are on.
+ */
+function wire(transport) {
+  transport
   .on(S2C.WELCOME, (msg) => {
     state.playerId = msg.playerId;
     state.isHost = msg.isHost;
+    state.connected = true;
     el.lobbyCode.textContent = msg.code;
+    if (msg.token) holdSeat({ code: msg.code, token: msg.token });
+
+    if (msg.resumed) {
+      // Back in an existing game: the PANEL that follows puts us on screen.
+      state.rejoining = false;
+      state.rejoinAttempt = 0;
+      el.rejoin.hidden = true;
+      el.dead.hidden = true;
+      toast('Back aboard.', 'info');
+      return;
+    }
     show('lobby');
+  })
+
+  .on(S2C.CREW, (msg) => {
+    toast(
+      msg.connected ? `${msg.name} is back aboard.` : `${msg.name} dropped out — holding their seat.`,
+      msg.connected ? 'info' : 'warn',
+    );
   })
 
   .on(S2C.LOBBY, (msg) => {
@@ -232,6 +330,8 @@ net
   })
 
   .on(S2C.PANEL, (msg) => {
+    // A console means a game is under way, so this seat is now worth rejoining.
+    armSeat();
     el.panel.replaceChildren(
       ...msg.controls.map((control) =>
         renderGizmo(control, (controlId, value) => {
@@ -363,19 +463,91 @@ net
       }),
     );
     el.over.hidden = false;
+    forgetSeat();
     sfx.over();
     buzz([200, 80, 200]);
   })
 
   .on(S2C.ERROR, (msg) => {
+    if (state.rejoining) {
+      // The seat is gone or taken; retrying cannot help.
+      giveUp(msg.message);
+      return;
+    }
     if (el.screens.home.hasAttribute('data-active')) el.homeHint.textContent = msg.message;
     else toast(msg.message);
   });
 
+  return transport;
+}
+
+wire(net);
+
+// ─────────────────────────────── reconnecting ───────────────────────────────
+
+/**
+ * Get back into the game we were already in.
+ *
+ * A phone that sleeps loses its socket without warning, so this retries with a
+ * backoff rather than dumping the player back at the start screen. The seat and
+ * its console are held server-side for the grace period.
+ */
+const REJOIN_BACKOFF_MS = [500, 1000, 2000, 3000, 5000, 5000, 8000];
+
+async function attemptRejoin() {
+  const seat = recallSeat();
+  if (!seat) {
+    giveUp('Lost the connection to the ship.');
+    return;
+  }
+
+  state.rejoining = true;
+  el.rejoin.hidden = false;
+  el.dead.hidden = true;
+
+  while (state.rejoining) {
+    const wait = REJOIN_BACKOFF_MS[Math.min(state.rejoinAttempt, REJOIN_BACKOFF_MS.length - 1)];
+    el.rejoinSub.textContent =
+      state.rejoinAttempt === 0 ? 'Holding your console.' : `Attempt ${state.rejoinAttempt + 1}…`;
+    await new Promise((resolve) => setTimeout(resolve, wait));
+    if (!state.rejoining) return;
+
+    state.rejoinAttempt++;
+    try {
+      await net.connect();
+      net.send(C2S.RESUME, { code: seat.code, token: seat.token });
+      return; // WELCOME or ERROR decides what happens next
+    } catch {
+      // Server still unreachable; the loop backs off and tries again.
+    }
+  }
+}
+
+function giveUp(reason) {
+  state.rejoining = false;
+  forgetSeat();
+  el.rejoin.hidden = true;
+  el.deadReason.textContent = reason;
+  el.dead.hidden = false;
+}
+
+$('btn-give-up').addEventListener('click', () => giveUp('Left the ship.'));
+
 net.onDown = () => {
   state.connected = false;
-  el.dead.hidden = false;
+  if (state.rejoining) return;
+  // Only a seat in a running game is worth rejoining; anything else is a plain
+  // failure and belongs back at the start screen.
+  if (recallSeat()) attemptRejoin();
+  else giveUp('Lost the connection to the ship.');
 };
+
+// A phone that was asleep often only discovers the socket is dead on waking.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (state.rejoining || net.isOpen || !recallSeat()) return;
+  attemptRejoin();
+});
 
 // ─────────────────────────────── countdown ───────────────────────────────
 
@@ -397,6 +569,37 @@ function motionHint(kind) {
   if (!motion.granted) return 'Tap the button!';
   return kind === ALL_HANDS.SHOUT ? 'Tap the button!' : 'Move your phone — or tap the button!';
 }
+
+// ───────────────────────── is there a server here? ─────────────────────────
+
+/**
+ * This same client is served by the Node server, by a hosting phone, and from
+ * a static host with nothing behind it. Only the first two can do multiplayer,
+ * so ask before offering it.
+ */
+async function detectServer() {
+  try {
+    const response = await fetch('/discover', { cache: 'no-store' });
+    if (!response.ok) throw new Error('no server');
+    const body = await response.json();
+    if (body.app !== 'spaceteam-lan') throw new Error('not our server');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+detectServer().then((present) => {
+  if (present) return;
+  // Static copy: multiplayer would just fail, so do not offer it.
+  el.multiplayer.hidden = true;
+  el.staticNote.hidden = false;
+  el.staticNote.innerHTML =
+    'This is a static copy, so there is no ship to fly with other people here — ' +
+    'practice solo below. For the real game, run the server on a laptop or ' +
+    '<strong>host it from an Android phone</strong>; both are in the ' +
+    '<a href="https://github.com/ThatMrE/Spoon-Knife" rel="noreferrer">repository</a>.';
+});
 
 // Browsers keep audio muted until a real gesture; the first tap anywhere pays for it.
 document.addEventListener('pointerdown', unlockAudio, { once: true });

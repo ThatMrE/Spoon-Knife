@@ -10,6 +10,7 @@
 export const C2S = {
   CREATE: 'create',       // { name }
   JOIN: 'join',           // { code, name }
+  RESUME: 'resume',       // { code, token } — rejoin a game after dropping
   READY: 'ready',         // { ready }
   START: 'start',         // host only
   CONTROL: 'control',     // { controlId, value }
@@ -21,7 +22,8 @@ export const C2S = {
 
 /** Server -> client. */
 export const S2C = {
-  WELCOME: 'welcome',         // { playerId, code, isHost }
+  WELCOME: 'welcome',         // { playerId, code, isHost, token, resumed }
+  CREW: 'crew',               // { name, connected } — someone dropped or came back
   LOBBY: 'lobby',             // { code, hostId, players[], phase }
   ERROR: 'error',             // { message, fatal }
   PANEL: 'panel',             // { wave, controls[] }
@@ -68,4 +70,12 @@ export const LIMITS = {
   MIN_PLAYERS: 1,
   NAME_MAX: 14,
   CODE_LENGTH: 4,
+  /**
+   * How long a dropped player keeps their seat and their console.
+   *
+   * Long enough to cover a phone that slept, a WiFi hiccup or a walk past the
+   * microwave; short enough that a crew is not stuck waiting on somebody who
+   * has gone home.
+   */
+  RESUME_GRACE_MS: 90_000,
 };

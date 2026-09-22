@@ -25,9 +25,12 @@
              autocapitalize="characters" spellcheck="false" placeholder="PILOT">
     </label>
 
-    <button class="btn btn-primary" id="btn-create">NEW SHIP</button>
+    <p class="static-note" id="static-note" hidden></p>
 
-    <div class="divider"><span>or join one</span></div>
+    <div id="multiplayer-controls">
+      <button class="btn btn-primary" id="btn-create">NEW SHIP</button>
+
+      <div class="divider"><span>or join one</span></div>
 
     <label class="field">
       <span>Ship code</span>
@@ -35,7 +38,12 @@
              autocapitalize="characters" spellcheck="false"
              inputmode="text" class="code-input" placeholder="ABCD">
     </label>
-    <button class="btn" id="btn-join">BOARD SHIP</button>
+      <button class="btn" id="btn-join">BOARD SHIP</button>
+    </div>
+
+    <div class="divider"><span>or fly it alone</span></div>
+    <button class="btn" id="btn-solo">PRACTICE SOLO</button>
+    <p class="solo-note">One console, no shouting. Good for learning the panel.</p>
 
     <p class="hint" id="home-hint"></p>
   </div>
@@ -104,6 +112,13 @@
 </div>
 
 <div class="toast" id="toast" hidden></div>
+
+<div class="overlay overlay-rejoin" id="overlay-rejoin" hidden>
+  <div class="rejoin-spinner"></div>
+  <p class="rejoin-title">RECONNECTING…</p>
+  <p class="rejoin-sub" id="rejoin-sub">Holding your console.</p>
+  <button class="btn btn-quiet" id="btn-give-up">Give up and start over</button>
+</div>
 
 <div class="overlay overlay-dead" id="overlay-dead" hidden>
   <p class="over-title">SIGNAL LOST</p>

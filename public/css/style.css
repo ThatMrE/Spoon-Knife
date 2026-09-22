@@ -67,6 +67,16 @@ body {
 }
 
 .hint { margin: 2px 0 0; min-height: 20px; text-align: center; font-size: 14px; color: var(--warn); }
+.solo-note { margin: -4px 0 0; text-align: center; font-size: 13px; color: var(--ink-dim); }
+.static-note {
+  margin: 0; padding: 12px 14px; border-radius: var(--radius);
+  background: var(--bg-raised); border: 2px solid var(--warn);
+  font-size: 14px; line-height: 1.45; color: var(--ink);
+}
+.static-note[hidden] { display: none; }
+.static-note a { color: var(--accent); }
+#multiplayer-controls { display: flex; flex-direction: column; gap: 14px; }
+#multiplayer-controls[hidden] { display: none; }
 
 .divider { position: relative; text-align: center; margin: 6px 0; color: var(--ink-dim); font-size: 13px; }
 .divider::before { content: ""; position: absolute; inset: 50% 0 auto; height: 1px; background: var(--line); }
@@ -322,6 +332,16 @@ input[type="range"]::-moz-range-thumb { width: 28px; height: 28px; border-radius
 .over-stats dt { color: var(--ink-dim); text-align: right; }
 .over-stats dd { margin: 0; font-weight: 800; text-align: left; }
 
+.overlay-rejoin { background: rgba(7, 9, 18, 0.96); }
+.rejoin-title { margin: 0; font-size: clamp(24px, 8vw, 38px); font-weight: 900; letter-spacing: 0.04em; }
+.rejoin-sub { margin: 0; color: var(--ink-dim); font-size: 15px; min-height: 22px; }
+.rejoin-spinner {
+  width: 54px; height: 54px; border-radius: 50%;
+  border: 5px solid var(--line); border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 .toast {
   position: fixed; left: 50%; bottom: calc(var(--safe-bottom) + 18px);
   transform: translateX(-50%);
@@ -331,6 +351,7 @@ input[type="range"]::-moz-range-thumb { width: 28px; height: 28px; border-radius
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 .toast[hidden] { display: none; }
+.toast.is-info { background: var(--bg-raised); border: 2px solid var(--line); }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
