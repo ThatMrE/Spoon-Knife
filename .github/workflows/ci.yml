@@ -118,6 +118,45 @@ jobs:
           AAPT=$(ls "$SDK"/build-tools/*/aapt2 | tail -1)
           "$AAPT" dump badging "$APK" | grep -E "^(package|application-label|sdkVersion|targetSdkVersion|launchable-activity|uses-permission)" || true
 
+          # Hosting in the background fails at runtime, on a device, if any of
+          # this is missing — Android 14 throws SecurityException for a
+          # foreground service without its matching permission. Assert rather
+          # than print.
+          echo "--- manifest requirements ---"
+          BADGING=$("$AAPT" dump badging "$APK")
+          for permission in \
+            android.permission.INTERNET \
+            android.permission.FOREGROUND_SERVICE \
+            android.permission.FOREGROUND_SERVICE_SPECIAL_USE \
+            android.permission.WAKE_LOCK \
+            android.permission.POST_NOTIFICATIONS
+          do
+            if echo "$BADGING" | grep -q "uses-permission: name='$permission'"; then
+              echo "  ok   $permission"
+            else
+              echo "::error::$permission is not declared; hosting would fail on a device"
+              exit 1
+            fi
+          done
+
+          # The service itself, and its foregroundServiceType. specialUse is
+          # 1 << 30 = 0x40000000 in the compiled manifest.
+          XMLTREE=$("$AAPT" dump xmltree --file AndroidManifest.xml "$APK" \
+            || "$AAPT" dump xmltree "$APK" --file AndroidManifest.xml)
+          if echo "$XMLTREE" | grep -q "HostService"; then
+            echo "  ok   HostService is declared"
+          else
+            echo "::error::HostService missing from the manifest"
+            exit 1
+          fi
+          if echo "$XMLTREE" | grep -i "foregroundServiceType" | grep -q "0x40000000"; then
+            echo "  ok   foregroundServiceType=specialUse"
+          else
+            echo "::error::foregroundServiceType is not specialUse"
+            echo "$XMLTREE" | grep -i "foregroundServiceType" || echo "  (attribute absent entirely)"
+            exit 1
+          fi
+
           APKSIGNER=$(ls "$SDK"/build-tools/*/apksigner | tail -1)
           "$APKSIGNER" verify --print-certs "$APK"
 
