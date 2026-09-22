@@ -74,6 +74,33 @@ jobs:
         working-directory: android
         run: ./gradlew --no-daemon testDebugUnitTest
 
+      # Gradle's test task passes when it finds no tests at all, so a green
+      # tick alone does not prove anything ran. Assert on the JUnit XML.
+      - name: Assert the unit tests actually ran
+        working-directory: android
+        run: |
+          python3 - <<'PY'
+          import glob, sys, xml.etree.ElementTree as ET
+
+          files = glob.glob('app/build/test-results/testDebugUnitTest/*.xml')
+          if not files:
+              sys.exit('::error::no JUnit result files — the tests did not run')
+
+          tests = failures = errors = skipped = 0
+          for path in files:
+              suite = ET.parse(path).getroot()
+              tests += int(suite.get('tests', 0))
+              failures += int(suite.get('failures', 0))
+              errors += int(suite.get('errors', 0))
+              skipped += int(suite.get('skipped', 0))
+
+          print(f'{tests} tests, {failures} failures, {errors} errors, {skipped} skipped')
+          if tests == 0:
+              sys.exit('::error::JUnit reported zero tests')
+          if failures or errors:
+              sys.exit('::error::unit tests failed')
+          PY
+
       - name: Build debug APK
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug
