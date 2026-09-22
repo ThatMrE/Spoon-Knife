@@ -67,6 +67,16 @@ body {
 }
 
 .hint { margin: 2px 0 0; min-height: 20px; text-align: center; font-size: 14px; color: var(--warn); }
+.solo-note { margin: -4px 0 0; text-align: center; font-size: 13px; color: var(--ink-dim); }
+.static-note {
+  margin: 0; padding: 12px 14px; border-radius: var(--radius);
+  background: var(--bg-raised); border: 2px solid var(--warn);
+  font-size: 14px; line-height: 1.45; color: var(--ink);
+}
+.static-note[hidden] { display: none; }
+.static-note a { color: var(--accent); }
+#multiplayer-controls { display: flex; flex-direction: column; gap: 14px; }
+#multiplayer-controls[hidden] { display: none; }
 
 .divider { position: relative; text-align: center; margin: 6px 0; color: var(--ink-dim); font-size: 13px; }
 .divider::before { content: ""; position: absolute; inset: 50% 0 auto; height: 1px; background: var(--line); }

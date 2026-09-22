@@ -3,6 +3,7 @@
  */
 import { ALL_HANDS, C2S, PHASE, S2C } from '/shared/protocol.js';
 import { Net } from '/js/net.js';
+import { Loopback } from '/js/loopback.js';
 import { buzz, sfx, unlockAudio } from '/js/feedback.js';
 import { MotionWatcher } from '/js/motion.js';
 import { renderGizmo } from '/js/gizmos.js';
@@ -11,6 +12,8 @@ const $ = (id) => document.getElementById(id);
 
 const el = {
   screens: { home: $('screen-home'), lobby: $('screen-lobby'), game: $('screen-game') },
+  staticNote: $('static-note'),
+  multiplayer: $('multiplayer-controls'),
   name: $('input-name'),
   code: $('input-code'),
   homeHint: $('home-hint'),
@@ -111,7 +114,7 @@ function forgetSeat() {
   }
 }
 
-const net = new Net();
+let net = new Net();
 const motion = new MotionWatcher((kind) => net.send(C2S.MOTION, { kind }));
 
 // ───────────────────────────────── helpers ─────────────────────────────────
@@ -194,6 +197,19 @@ async function enter(type, extra) {
 }
 
 $('btn-create').addEventListener('click', () => enter(C2S.CREATE));
+
+$('btn-solo').addEventListener('click', async () => {
+  const name = el.name.value.trim() || 'SOLO';
+  localStorage.setItem('spaceteam:name', name);
+  el.homeHint.textContent = '';
+
+  // No server involved: the page runs the rules itself.
+  net = wire(new Loopback());
+  net.onDown = () => giveUp('Practice ended.');
+  await net.connect();
+  net.send(C2S.CREATE, { name });
+  net.send(C2S.START);
+});
 $('btn-join').addEventListener('click', () => {
   const code = el.code.value.trim().toUpperCase();
   if (code.length !== 4) {
@@ -241,7 +257,14 @@ el.allHandsBtn.addEventListener('click', () => {
 
 // ───────────────────────────── server messages ─────────────────────────────
 
-net
+/**
+ * Attach the game's message handlers to a transport.
+ *
+ * Called for the WebSocket at startup and again for the in-page transport when
+ * somebody practises solo; the handlers cannot tell which one they are on.
+ */
+function wire(transport) {
+  transport
   .on(S2C.WELCOME, (msg) => {
     state.playerId = msg.playerId;
     state.isHost = msg.isHost;
@@ -455,6 +478,11 @@ net
     else toast(msg.message);
   });
 
+  return transport;
+}
+
+wire(net);
+
 // ─────────────────────────────── reconnecting ───────────────────────────────
 
 /**
@@ -541,6 +569,37 @@ function motionHint(kind) {
   if (!motion.granted) return 'Tap the button!';
   return kind === ALL_HANDS.SHOUT ? 'Tap the button!' : 'Move your phone — or tap the button!';
 }
+
+// ───────────────────────── is there a server here? ─────────────────────────
+
+/**
+ * This same client is served by the Node server, by a hosting phone, and from
+ * a static host with nothing behind it. Only the first two can do multiplayer,
+ * so ask before offering it.
+ */
+async function detectServer() {
+  try {
+    const response = await fetch('/discover', { cache: 'no-store' });
+    if (!response.ok) throw new Error('no server');
+    const body = await response.json();
+    if (body.app !== 'spaceteam-lan') throw new Error('not our server');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+detectServer().then((present) => {
+  if (present) return;
+  // Static copy: multiplayer would just fail, so do not offer it.
+  el.multiplayer.hidden = true;
+  el.staticNote.hidden = false;
+  el.staticNote.innerHTML =
+    'This is a static copy, so there is no ship to fly with other people here — ' +
+    'practice solo below. For the real game, run the server on a laptop or ' +
+    '<strong>host it from an Android phone</strong>; both are in the ' +
+    '<a href="https://github.com/ThatMrE/Spoon-Knife" rel="noreferrer">repository</a>.';
+});
 
 // Browsers keep audio muted until a real gesture; the first tap anywhere pays for it.
 document.addEventListener('pointerdown', unlockAudio, { once: true });

@@ -1,0 +1,19 @@
+# The client imports modules from shared/ and core/, which sit outside public/,
+# so the deployable tree is staged by a build step rather than published
+# straight from a source directory.
+[build]
+  command = "node tools/build-site.mjs"
+  publish = "site"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# A static host has no WebSocket server behind it, so the deployed page offers
+# solo practice only — it detects the absence of /discover at runtime and says
+# so. Multiplayer needs the Node server on a laptop, or an Android phone
+# hosting. Nothing here is a single-page app, so no redirect rules.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"

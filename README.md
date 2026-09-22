@@ -22,7 +22,14 @@ else opens a URL.
 └─────────────────────────┘        └─────────────────────────┘
 ```
 
-## Two ways to run it
+## Three ways to play
+
+**Solo practice, in any browser.** A static copy is deployed at
+[sociovia.netlify.app](https://sociovia.netlify.app). There is no server behind
+it, so it runs the game *inside the page* — one console, no shouting, good for
+learning the panel. Multiplayer needs one of the two below.
+
+## Two ways to run the real thing
 
 **On a phone, with no laptop at all.** Install the Android app, tap *Host a game
 on this phone*, and everyone else taps *Find ships on this WiFi*. See
@@ -53,6 +60,17 @@ four-letter code out loud; everybody else types it in. The host taps **LAUNCH**
 once the crew is ready.
 
 Set `PORT` to use a different port: `PORT=8080 node server/index.js`.
+
+### Why the hosted copy is solo only
+
+Static hosting cannot keep a WebSocket server alive, and multiplayer needs one
+authority over the hull and the instructions. Rather than ship a page whose
+buttons fail, the client asks `/discover` on load: if nothing answers, it hides
+the multiplayer controls, says why, and offers practice instead.
+
+Practice works because `core/` has no Node APIs, so the page can be both server
+and client — the same trick the Android host uses, with an in-page transport
+(`public/js/loopback.js`) in place of a socket.
 
 ### It has to be the same WiFi
 
@@ -217,6 +235,16 @@ game a single authority over the hull and the instructions, which is exactly
 what a shared-state game wants. The Node server and the Android host are two
 transports in front of the same `core/`, so which device hosts changes nothing
 about the rules.
+
+## Deploying the static copy
+
+`netlify.toml` builds with `node tools/build-site.mjs`, which stages `public/`,
+`shared/` and `core/` into `site/` — the client imports modules from outside
+`public/`, so the tree has to be assembled rather than published straight from a
+source directory. The build fails loudly if any required file is missing, since
+a partial copy would deploy a page that 404s on its own modules.
+
+Pushing to `master` deploys; pull requests get their own preview.
 
 ## Tests
 
