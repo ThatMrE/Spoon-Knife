@@ -45,3 +45,57 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # GitHub runners ship the Android SDK, but not necessarily this exact
+      # platform. Installing it explicitly beats relying on AGP's auto-download.
+      - name: Ensure SDK platform 35
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "Using SDK at $SDK"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Unit tests
+        working-directory: android
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
+
+      # Prove the artifact is a real, signed, installable APK rather than just
+      # a file that exists.
+      - name: Inspect the APK
+        working-directory: android
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          APK=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          test -n "$APK" || { echo "::error::no APK produced"; exit 1; }
+          echo "APK: $APK ($(du -h "$APK" | cut -f1))"
+
+          AAPT=$(ls "$SDK"/build-tools/*/aapt2 | tail -1)
+          "$AAPT" dump badging "$APK" | grep -E "^(package|application-label|sdkVersion|targetSdkVersion|launchable-activity|uses-permission)" || true
+
+          APKSIGNER=$(ls "$SDK"/build-tools/*/apksigner | tail -1)
+          "$APKSIGNER" verify --print-certs "$APK"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spaceteam-lan-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

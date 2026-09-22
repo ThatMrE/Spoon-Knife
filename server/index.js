@@ -10,6 +10,8 @@ import { networkInterfaces } from 'node:os';
 import { extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { hostname } from 'node:os';
+
 import { RoomManager } from './rooms.js';
 import { attachWebSocketServer } from './ws.js';
 
@@ -58,6 +60,30 @@ export function resolveStatic(urlPath) {
   return full === allowed || full.startsWith(allowed + sep) ? full : null;
 }
 
+/**
+ * A marker the Android app probes for while sweeping the local subnet, so
+ * nobody has to read an IP address out loud. Deliberately tiny and
+ * dependency-free: the app fires one of these at every address on the /24.
+ */
+export const DISCOVERY_APP_ID = 'spaceteam-lan';
+
+function serveDiscovery(res, rooms) {
+  const body = JSON.stringify({
+    app: DISCOVERY_APP_ID,
+    host: hostname(),
+    rooms: rooms.rooms.size,
+    players: [...rooms.rooms.values()].reduce((n, room) => n + room.players.size, 0),
+  });
+  res.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body),
+    'Cache-Control': 'no-store',
+    // The app is not a browser, but a phone's browser may probe this too.
+    'Access-Control-Allow-Origin': '*',
+  });
+  res.end(body);
+}
+
 async function serveStatic(req, res) {
   const path = resolveStatic(req.url ?? '/');
   if (!path) {
@@ -93,7 +119,10 @@ export function lanAddresses() {
 
 export function createGameServer() {
   const rooms = new RoomManager();
-  const server = createServer(serveStatic);
+  const server = createServer((req, res) => {
+    if ((req.url ?? '').split('?')[0] === '/discover') serveDiscovery(res, rooms);
+    else serveStatic(req, res);
+  });
   attachWebSocketServer(server, { path: '/ws', onConnection: (c) => rooms.attach(c) });
   server.rooms = rooms;
   return server;

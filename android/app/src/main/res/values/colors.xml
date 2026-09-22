@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Same palette as the web client, so the app does not feel like a wrapper. -->
+  <color name="bg">#0A0D18</color>
+  <color name="bg_raised">#151B2E</color>
+  <color name="bg_sunken">#070912</color>
+  <color name="line">#2A3350</color>
+  <color name="ink">#E8ECFB</color>
+  <color name="ink_dim">#8D97B8</color>
+  <color name="accent">#35E0D0</color>
+  <color name="accent_ink">#04211F</color>
+  <color name="warn">#FFB545</color>
+</resources>

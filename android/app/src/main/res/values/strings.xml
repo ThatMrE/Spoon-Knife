@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">Spaceteam LAN</string>
+  <string name="tagline">Shout at your friends. Fly the ship.</string>
+  <string name="host_label">Host address</string>
+  <string name="host_hint">192.168.1.24:3000</string>
+  <string name="connect">BOARD THE SHIP</string>
+  <string name="find">FIND SHIPS ON THIS WIFI</string>
+  <string name="searching">Sweeping the network…</string>
+  <string name="none_found">No ship found. Is the host running and on this WiFi?</string>
+  <string name="need_address">Type the address the host printed.</string>
+  <string name="cant_reach">Could not reach that ship.</string>
+  <string name="retry">TRY AGAIN</string>
+  <string name="change_host">CHANGE ADDRESS</string>
+</resources>

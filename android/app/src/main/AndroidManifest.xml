@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!-- The only permission needed: talk to a server on the local network.
+       Subnet discovery enumerates NetworkInterface, which needs no permission. -->
+  <uses-permission android:name="android.permission.INTERNET" />
+
+  <!-- usesCleartextTraffic: the whole point is plain HTTP to a machine on the
+       same WiFi. There is no certificate to be had for 192.168.x.x, and a
+       network security config cannot express "private ranges only". -->
+  <application
+      android:allowBackup="false"
+      android:icon="@mipmap/ic_launcher"
+      android:label="@string/app_name"
+      android:roundIcon="@mipmap/ic_launcher_round"
+      android:supportsRtl="true"
+      android:theme="@style/AppTheme"
+      android:usesCleartextTraffic="true">
+
+    <activity
+        android:name=".MainActivity"
+        android:configChanges="orientation|screenSize|keyboardHidden"
+        android:exported="true"
+        android:screenOrientation="portrait">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>

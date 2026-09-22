@@ -42,9 +42,10 @@ It prints the addresses it's reachable on:
     http://192.168.1.24:3000
 ```
 
-Everyone opens that URL in their phone's browser. One person taps **NEW SHIP**
-and reads the four-letter code out loud; everybody else types it in. The host
-taps **LAUNCH** once the crew is ready.
+Everyone opens that URL in their phone's browser — or installs the Android app
+(below) and skips the typing. One person taps **NEW SHIP** and reads the
+four-letter code out loud; everybody else types it in. The host taps **LAUNCH**
+once the crew is ready.
 
 Set `PORT` to use a different port: `PORT=8080 node server/index.js`.
 
@@ -54,6 +55,51 @@ Phones reach the server over the local network, so every phone and the host
 machine must be on the same WiFi, and it must not be a "client isolation" /
 guest network that blocks device-to-device traffic. If a phone can't load the
 page, that's almost always why.
+
+## The Android app
+
+There is an installable Android app under `android/`. It is a thin native shell
+around the same web client, which buys three things a browser tab cannot:
+
+* **It finds the host for you.** Tap *Find ships on this WiFi* and it sweeps
+  your subnet for servers, so nobody reads an IP address out loud.
+* **The screen never sleeps.** A phone that dims mid-wave was the worst part of
+  playing this in a browser.
+* **Real fullscreen, real app icon.** No URL bar eating the top of the console.
+
+### Getting the APK
+
+Every push builds a debug APK in CI. Open the latest **CI** run under the
+repository's Actions tab, and download the `spaceteam-lan-debug-apk` artifact.
+It is signed with the standard Android debug key, so it installs by sideloading
+(you will have to allow install from your browser or file manager).
+
+To build it yourself you need the Android SDK (Android Studio, or the
+command-line tools):
+
+```sh
+cd android
+./gradlew assembleDebug
+# app/build/outputs/apk/debug/app-debug.apk
+```
+
+### Why it loads the client from the host instead of bundling it
+
+Bundling the HTML in the APK would put the page on a `file://` or
+`appassets.androidplatform.net` origin while the WebSocket stayed on
+`ws://192.168.x.x`, which browsers treat as mixed content and block. Loading
+everything from the host keeps the page and its socket same-origin cleartext
+HTTP, and means the app can never go stale against a newer server.
+
+This is also why it is an APK and not a PWA: an installable PWA needs a secure
+context, and there is no certificate to be had for `http://192.168.1.24`.
+
+### What the app still needs
+
+The app is a *client*. Something still has to run `node server/index.js` — a
+laptop on the same WiFi. Removing that would mean running the game server on a
+phone, which needs either Node-on-Android or the game rules ported to Java; the
+second would mean two copies of the rules, free to drift apart. See the roadmap.
 
 ## How to play
 
@@ -77,7 +123,7 @@ instruction was satisfied, and they're never sent anybody else's console.
 
 ```
 server/
-  index.js   HTTP static file serving + /ws upgrade, prints LAN addresses
+  index.js   HTTP static file serving + /ws upgrade + /discover, prints LAN addresses
   ws.js      a small RFC 6455 WebSocket server (this is why there are no deps)
   rooms.js   room codes, crew rosters, ready state, the per-room tick loop
   game.js    the game itself: waves, instructions, hull, emergencies
@@ -88,6 +134,7 @@ shared/
 public/
   index.html, css/, js/   the client
 test/        node --test suites
+android/     installable Android client (Java, no third-party dependencies)
 ```
 
 `shared/protocol.js` is served to the browser as-is and imported by the server,
@@ -127,7 +174,11 @@ CI runs the suite on Node 20, 22, 24 and 26 for every pull request.
 
 * **No reconnection.** If a phone sleeps or drops WiFi mid-game, that player
   leaves the crew and their console goes with them; the run continues without
-  them. Rejoining means waiting for the next game.
+  them. Rejoining means waiting for the next game. (The Android app keeps the
+  screen awake, which removes the most common cause.)
+* **The Android app has not been run on a physical device by its author** — it
+  builds and its logic is unit-tested in CI, but the on-device behaviour of the
+  WebView shell and the subnet sweep is unverified. Treat it as a first cut.
 * **No spectating or mid-game joining** — the ship is sealed at launch.
 * **Rooms live in memory**, so restarting the server ends every game.
 * Audio needs one tap on the page before it will make noise (browser policy),
@@ -135,6 +186,10 @@ CI runs the suite on Node 20, 22, 24 and 26 for every pull request.
 
 ## Roadmap
 
+* **Host from a phone**, so no laptop is needed at all. The honest options are
+  Node-on-Android (keeps one copy of the game rules, adds a big native
+  dependency) or porting `server/game.js` to Java (no new dependency, but two
+  implementations of the rules that will drift). Leaning towards the former.
 * Reconnect-by-name within a grace period
 * More gizmo kinds (keypads, sequences, "hold for 3 seconds")
 * A proper score history, and per-crew records

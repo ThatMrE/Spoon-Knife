@@ -9,7 +9,7 @@ import { strict as assert } from 'node:assert';
 import test, { after, before } from 'node:test';
 
 import { C2S, PHASE, S2C } from '../shared/protocol.js';
-import { createGameServer } from '../server/index.js';
+import { DISCOVERY_APP_ID, createGameServer } from '../server/index.js';
 import { TestClient } from './client.js';
 
 let server;
@@ -67,6 +67,34 @@ test('server source and package metadata are not reachable over HTTP', async () 
 
 test('a missing asset is a 404, not a crash', async () => {
   assert.equal((await get('/js/nope.js')).status, 404);
+});
+
+test('/discover identifies the ship so the app can find it on the WiFi', async () => {
+  const response = await get('/discover');
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /application\/json/);
+
+  const body = await response.json();
+  assert.equal(body.app, DISCOVERY_APP_ID, 'the marker the app matches on');
+  assert.equal(typeof body.host, 'string');
+  assert.equal(typeof body.rooms, 'number');
+  assert.equal(typeof body.players, 'number');
+});
+
+test('/discover reports the live crew count', async () => {
+  const before = await (await get('/discover')).json();
+
+  const host = await connect();
+  host.send(C2S.CREATE, { name: 'SCOUT' });
+  await host.waitFor(S2C.WELCOME);
+
+  const after = await (await get('/discover')).json();
+  assert.equal(after.rooms, before.rooms + 1);
+  assert.equal(after.players, before.players + 1);
+});
+
+test('/discover ignores a query string', async () => {
+  assert.equal((await get('/discover?probe=1')).status, 200);
 });
 
 // ─────────────────────────────── handshake ───────────────────────────────
