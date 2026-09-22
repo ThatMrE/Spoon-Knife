@@ -9,6 +9,13 @@ import { Game } from './game.js';
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const TICK_MS = 200;
 const EMPTY_ROOM_GRACE_MS = 60_000;
+/**
+ * Rooms one process will hold at once.
+ *
+ * Unbounded room creation is free resource exhaustion for anyone who can reach
+ * the server, which stopped being only your living room when it went public.
+ */
+const MAX_ROOMS = 200;
 
 let nextPlayerId = 1;
 
@@ -154,6 +161,12 @@ export class Room {
       player.graceTimer = null;
       this.remove(playerId);
     }, LIMITS.RESUME_GRACE_MS);
+    // A seat waiting to be reclaimed must not be a reason for the process to
+    // stay alive: without this, anything embedding the server waits out the
+    // full grace period before it can exit (it made the test suite take 100
+    // seconds instead of 10). Browsers hand back a plain number, hence the
+    // optional call.
+    player.graceTimer.unref?.();
 
     if (this.game.isOver) this.finish();
   }
@@ -267,10 +280,23 @@ export class Room {
   }
 }
 
+/** Allows everything; a public deployment supplies a real one. */
+const OPEN_GUARD = {
+  allowJoin: () => true,
+  retryAfterSeconds: () => 0,
+  noteJoinFailure() {},
+  noteJoinSuccess() {},
+};
+
 export class RoomManager {
-  constructor() {
+  /**
+   * @param {object} [options]
+   * @param {object} [options.guard] abuse limits, for an internet-facing server
+   */
+  constructor(options = {}) {
     /** @type {Map<string, Room>} */
     this.rooms = new Map();
+    this.guard = options.guard ?? OPEN_GUARD;
     this.sweeper = setInterval(() => this.sweep(), 30_000);
     this.sweeper.unref?.();
   }
@@ -287,6 +313,7 @@ export class RoomManager {
   }
 
   create() {
+    if (this.rooms.size >= MAX_ROOMS) return null;
     const code = this.newCode();
     const room = new Room(code, this);
     this.rooms.set(code, room);
@@ -328,6 +355,7 @@ export class RoomManager {
         case C2S.CREATE: {
           if (session.room) return;
           const room = this.create();
+          if (!room) return fail('This server is holding as many ships as it can.');
           const { player, error } = room.add(connection, msg.name);
           if (error) return fail(error);
           session.room = room;
@@ -337,10 +365,21 @@ export class RoomManager {
 
         case C2S.JOIN: {
           if (session.room) return;
+          const address = connection.data?.address ?? 'local';
+          if (!this.guard.allowJoin(address)) {
+            const wait = this.guard.retryAfterSeconds(address);
+            return fail(`Too many wrong codes. Try again in ${wait}s.`);
+          }
+
           const room = this.get(msg.code);
-          if (!room) return fail(`No ship with code ${String(msg.code ?? '').toUpperCase()}.`);
+          if (!room) {
+            // Only a miss counts: a wrong code is what guessing looks like.
+            this.guard.noteJoinFailure(address);
+            return fail(`No ship with code ${String(msg.code ?? '').toUpperCase()}.`);
+          }
           const { player, error } = room.add(connection, msg.name);
           if (error) return fail(error);
+          this.guard.noteJoinSuccess(address);
           session.room = room;
           session.playerId = player.id;
           break;
@@ -348,10 +387,22 @@ export class RoomManager {
 
         case C2S.RESUME: {
           if (session.room) return;
+          const address = connection.data?.address ?? 'local';
+          if (!this.guard.allowJoin(address)) {
+            return fail(`Too many wrong codes. Try again in ${this.guard.retryAfterSeconds(address)}s.`, true);
+          }
           const room = this.get(msg.code);
-          if (!room) return fail(`No ship with code ${String(msg.code ?? '').toUpperCase()}.`, true);
+          if (!room) {
+            this.guard.noteJoinFailure(address);
+            return fail(`No ship with code ${String(msg.code ?? '').toUpperCase()}.`, true);
+          }
           const { player, error } = room.resume(connection, String(msg.token ?? ''));
-          if (error) return fail(error, true);
+          if (error) {
+            // A bad token is a guess at somebody's seat, same as a bad code.
+            this.guard.noteJoinFailure(address);
+            return fail(error, true);
+          }
+          this.guard.noteJoinSuccess(address);
           session.room = room;
           session.playerId = player.id;
           break;

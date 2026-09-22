@@ -188,3 +188,58 @@ jobs:
           name: spaceteam-lan-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+  docker:
+    name: Server image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # This environment has no Docker daemon, so the image is only ever really
+      # built here. Build it and prove the container serves a game, rather than
+      # finding out at deploy time.
+      - name: Build the image
+        run: docker build -t spaceteam-lan:ci .
+
+      - name: Run it and check it serves the game
+        run: |
+          docker run -d --name spaceteam -p 8080:8080 spaceteam-lan:ci
+
+          for attempt in $(seq 1 30); do
+            if curl -sf -o /dev/null http://127.0.0.1:8080/discover; then break; fi
+            sleep 1
+          done
+
+          fail() { echo "::error::$1"; docker logs spaceteam || true; docker rm -f spaceteam; exit 1; }
+
+          # Every path the client imports has to resolve inside the image, or
+          # the page loads and then dies on a missing module.
+          for path in / /js/app.js /js/loopback.js /css/style.css \
+                      /shared/protocol.js /core/rooms.js /core/game.js /host/bridge.js
+          do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080$path")
+            [ "$code" = "200" ] || fail "$path returned $code from the container"
+            echo "  ok   $path"
+          done
+
+          body=$(curl -s http://127.0.0.1:8080/discover)
+          echo "  /discover: $body"
+          echo "$body" | grep -q '"public":true' \
+            || fail "the image must run in public mode (PUBLIC_SERVER=1)"
+          echo "$body" | grep -q '"app":"spaceteam-lan"' \
+            || fail "/discover is not identifying the app"
+
+          # Server source must not be reachable, same as anywhere else.
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/server/ws.js)
+          [ "$code" = "404" ] || fail "server source was served from the container ($code)"
+          echo "  ok   /server/ws.js is not served"
+
+          docker rm -f spaceteam
+
+      - name: Check it runs unprivileged
+        run: |
+          user=$(docker run --rm --entrypoint sh spaceteam-lan:ci -c 'id -un')
+          echo "container user: $user"
+          [ "$user" = "node" ] || { echo "::error::image runs as $user, not node"; exit 1; }

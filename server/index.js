@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { hostname } from 'node:os';
 
 import { RoomManager } from '../core/rooms.js';
+import { ConnectionGuard, clientAddress } from './guard.js';
 import { attachWebSocketServer } from './ws.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -27,6 +28,15 @@ const PUBLIC_DIR = join(ROOT, 'public');
 const EXPOSED_DIRS = ['shared', 'core'];
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '0.0.0.0';
+/**
+ * Set on an internet-facing deployment. It changes two things: the client is
+ * told that a code now reaches anyone rather than just the WiFi, and the
+ * hostname is kept out of /discover, where it would only be a detail about
+ * somebody's infrastructure.
+ */
+const IS_PUBLIC = process.env.PUBLIC_SERVER === '1';
+/** Only trust forwarded client addresses when something trustworthy sets them. */
+const TRUST_PROXY = process.env.TRUST_PROXY === '1';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -80,7 +90,10 @@ export const DISCOVERY_APP_ID = 'spaceteam-lan';
 function serveDiscovery(res, rooms) {
   const body = JSON.stringify({
     app: DISCOVERY_APP_ID,
-    host: hostname(),
+    // A LAN host names itself so a sweeping phone can show "ADA's laptop";
+    // a public one has no business advertising its hostname.
+    host: IS_PUBLIC ? 'public server' : hostname(),
+    public: IS_PUBLIC,
     rooms: rooms.rooms.size,
     players: [...rooms.rooms.values()].reduce((n, room) => n + room.players.size, 0),
   });
@@ -127,14 +140,38 @@ export function lanAddresses() {
   return addresses;
 }
 
-export function createGameServer() {
-  const rooms = new RoomManager();
+export function createGameServer({ guard = new ConnectionGuard(), trustProxy = TRUST_PROXY } = {}) {
+  const rooms = new RoomManager({ guard });
   const server = createServer((req, res) => {
     if ((req.url ?? '').split('?')[0] === '/discover') serveDiscovery(res, rooms);
     else serveStatic(req, res);
   });
-  attachWebSocketServer(server, { path: '/ws', onConnection: (c) => rooms.attach(c) });
+
+  attachWebSocketServer(server, {
+    path: '/ws',
+    onConnection: (connection, request) => {
+      const address = clientAddress(request, { trustProxy });
+      const admitted = guard.admit(address);
+      if (!admitted.ok) {
+        // Turn it away politely rather than dropping the socket, so an honest
+        // client can say why it failed.
+        connection.send({ t: 'error', message: admitted.error, fatal: true });
+        connection.close(1013, 'try later');
+        return;
+      }
+
+      connection.data.address = address;
+      connection.on('close', () => guard.release(address));
+      rooms.attach(connection);
+    },
+  });
+
+  const guardSweeper = setInterval(() => guard.sweep(), 60_000);
+  guardSweeper.unref?.();
+  server.on('close', () => clearInterval(guardSweeper));
+
   server.rooms = rooms;
+  server.guard = guard;
   return server;
 }
 
@@ -150,6 +187,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === normalize(process.argv
     }
     for (const address of addresses) console.log(`    http://${address}:${PORT}`);
     console.log(`\n  Also here: http://localhost:${PORT}`);
+    if (IS_PUBLIC) {
+      console.log('  Running in public mode: room codes reach anyone, and abuse limits are on.');
+    }
     console.log('  One phone taps NEW SHIP and reads out the code. Ctrl-C to shut down.\n');
   });
 }

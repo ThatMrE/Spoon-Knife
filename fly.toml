@@ -1,0 +1,45 @@
+# Deploy the multiplayer server so a game can be played by people who are not
+# in the same room.
+#
+#   fly launch --no-deploy --copy-config --name spaceteam-lan   # first time
+#   fly deploy
+#
+# Rooms live in memory, which is the one thing to understand about this config.
+
+app = "spaceteam-lan"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+
+  # Exactly one machine, deliberately. Rooms and games are in-memory, so a
+  # second machine would hold a second, disjoint set of rooms — a player typing
+  # a valid code would be told it does not exist about half the time. Scaling
+  # this out needs shared state first.
+  min_machines_running = 1
+  auto_start_machines = true
+  auto_stop_machines = "off"
+
+  # Concurrency is about sockets, not requests: every player holds one open for
+  # the whole game. The server's own abuse limits sit underneath these.
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 400
+    soft_limit = 350
+
+# /discover is a cheap, dependency-free liveness signal: it only touches
+# in-memory state, so a machine that answers it can actually serve a game.
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "10s"
+  method = "GET"
+  path = "/discover"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

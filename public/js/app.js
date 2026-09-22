@@ -583,22 +583,33 @@ async function detectServer() {
     if (!response.ok) throw new Error('no server');
     const body = await response.json();
     if (body.app !== 'spaceteam-lan') throw new Error('not our server');
-    return true;
+    return body;
   } catch {
-    return false;
+    return null;
   }
 }
 
-detectServer().then((present) => {
-  if (present) return;
-  // Static copy: multiplayer would just fail, so do not offer it.
-  el.multiplayer.hidden = true;
-  el.staticNote.hidden = false;
-  el.staticNote.innerHTML =
-    'This is a static copy, so there is no ship to fly with other people here — ' +
-    'practice solo below. For the real game, run the server on a laptop or ' +
-    '<strong>host it from an Android phone</strong>; both are in the ' +
-    '<a href="https://github.com/ThatMrE/Spoon-Knife" rel="noreferrer">repository</a>.';
+detectServer().then((server) => {
+  if (!server) {
+    // Static copy: multiplayer would just fail, so do not offer it.
+    el.multiplayer.hidden = true;
+    el.staticNote.hidden = false;
+    el.staticNote.innerHTML =
+      'This is a static copy, so there is no ship to fly with other people here — ' +
+      'practice solo below. For the real game, run the server on a laptop or ' +
+      '<strong>host it from an Android phone</strong>; both are in the ' +
+      '<a href="https://github.com/ThatMrE/Spoon-Knife" rel="noreferrer">repository</a>.';
+    return;
+  }
+
+  if (server.public) {
+    // On a LAN the code only reaches the room you are in. Here it reaches
+    // anyone who types it, which is worth saying out loud before you shout it.
+    el.staticNote.hidden = false;
+    el.staticNote.textContent =
+      'This ship is on the open internet, so your four-letter code is the only ' +
+      'thing keeping strangers out. Share it with your crew, not with a livestream.';
+  }
 });
 
 // Browsers keep audio muted until a real gesture; the first tap anywhere pays for it.

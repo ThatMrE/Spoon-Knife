@@ -1,0 +1,9 @@
+.git
+.github
+android
+site
+test
+tools
+node_modules
+*.md
+netlify.toml
