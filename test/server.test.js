@@ -10,6 +10,7 @@ import test, { after, before } from 'node:test';
 
 import { C2S, PHASE, S2C } from '../shared/protocol.js';
 import { DISCOVERY_APP_ID, createGameServer } from '../server/index.js';
+import { ConnectionGuard } from '../server/guard.js';
 import { TestClient } from './client.js';
 
 let server;
@@ -17,7 +18,12 @@ let port;
 const clients = [];
 
 before(async () => {
-  server = createGameServer();
+  // These tests are about the protocol, and they hold dozens of sockets open
+  // from 127.0.0.1 at once. The abuse limits are exercised in guard.test.js and
+  // by the dedicated test below, not incidentally by every other test.
+  server = createGameServer({
+    guard: new ConnectionGuard({ maxConnections: 10_000, maxPerAddress: 10_000 }),
+  });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   port = server.address().port;
 });
@@ -103,6 +109,14 @@ test('/discover reports the live crew count', async () => {
   const after = await (await get('/discover')).json();
   assert.equal(after.rooms, before.rooms + 1);
   assert.equal(after.players, before.players + 1);
+});
+
+test('/discover says whether the server is public', async () => {
+  // The client shows a different warning about room codes depending on this,
+  // and a LAN server must not claim to be public.
+  const body = await (await get('/discover')).json();
+  assert.equal(body.public, false);
+  assert.notEqual(body.host, 'public server', 'a LAN host names itself');
 });
 
 test('/discover ignores a query string', async () => {
@@ -437,4 +451,29 @@ test('a crewmate disconnecting is announced to whoever is left', async () => {
   }
   assert.ok(roster, 'the remaining crew was never told');
   assert.deepEqual(roster.players.map((p) => p.name), ['ADA']);
+});
+
+test('a server can refuse a client it has no room for', async () => {
+  // Proves the guard is actually wired into the socket handler, not just unit
+  // tested in isolation.
+  const tiny = createGameServer({ guard: new ConnectionGuard({ maxConnections: 1 }) });
+  await new Promise((resolve) => tiny.listen(0, '127.0.0.1', resolve));
+  const tinyPort = tiny.address().port;
+
+  const first = await TestClient.connect(tinyPort);
+  const second = await TestClient.connect(tinyPort);
+
+  const refusal = await second.waitFor(S2C.ERROR);
+  assert.match(refusal.message, /full/i);
+  assert.equal(refusal.fatal, true);
+
+  // The client that got in is unaffected.
+  first.send(C2S.CREATE, { name: 'LUCKY' });
+  assert.ok(await first.waitFor(S2C.WELCOME));
+
+  first.close();
+  second.close();
+  for (const room of tiny.rooms.rooms.values()) room.stopTimer();
+  clearInterval(tiny.rooms.sweeper);
+  await new Promise((resolve) => tiny.close(resolve));
 });

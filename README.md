@@ -22,12 +22,16 @@ else opens a URL.
 └─────────────────────────┘        └─────────────────────────┘
 ```
 
-## Three ways to play
+## Four ways to play
 
-**Solo practice, in any browser.** A static copy is deployed at
+**Solo practice, in any browser.** A static copy is at
 [sociovia.netlify.app](https://sociovia.netlify.app). There is no server behind
 it, so it runs the game *inside the page* — one console, no shouting, good for
-learning the panel. Multiplayer needs one of the two below.
+learning the panel.
+
+**With people who are not in the room**, on a public server. `Dockerfile` and
+`fly.toml` deploy the real multiplayer server to Fly; see
+[Deploying the multiplayer server](#deploying-the-multiplayer-server).
 
 ## Two ways to run the real thing
 
@@ -235,6 +239,56 @@ game a single authority over the hull and the instructions, which is exactly
 what a shared-state game wants. The Node server and the Android host are two
 transports in front of the same `core/`, so which device hosts changes nothing
 about the rules.
+
+## Deploying the multiplayer server
+
+The game needs a host that can hold a WebSocket open for the length of a game,
+which static hosting cannot. `Dockerfile` and `fly.toml` are set up for Fly:
+
+```sh
+fly launch --no-deploy --copy-config --name spaceteam-lan   # first time only
+fly deploy
+```
+
+To deploy from CI instead, add a token as a repository secret and pushes to
+`master` will do it:
+
+```sh
+fly tokens create deploy | gh secret set FLY_API_TOKEN
+```
+
+### What changes when it is public
+
+On a LAN, everyone who can reach the port is already in your living room. On
+the internet they are not, so the server behaves differently:
+
+* **Abuse limits** (`server/guard.js`): caps on total sockets, sockets per
+  address and rooms, plus a cooldown for an address that keeps guessing room
+  codes.
+* **`/discover` reports `public: true`**, and the client warns that a
+  four-letter code now reaches anyone who types it rather than only the WiFi.
+  It also stops advertising the hostname, which is nobody's business.
+* **`TRUST_PROXY=1`** so the limits see the real client address from Fly's
+  headers rather than the proxy's. Forwarded headers are ignored otherwise,
+  because a direct client can spoof them freely.
+
+**Be clear-eyed about the room code.** Four characters is about a million
+combinations, and it is the only thing between a stranger and your game. The
+rate limit means one address needs centuries to sweep the space and months to
+blunder into any live game — but a distributed attacker scales that down
+linearly. The stake is a stranger in your party game, not your data, and that
+trade is what buys a code short enough to shout across a room. Lengthen
+`LIMITS.CODE_LENGTH` if you disagree.
+
+### Exactly one machine, deliberately
+
+Rooms and games are in-memory, so `fly.toml` pins the app to a single machine.
+A second one would hold a second, disjoint set of rooms, and a player typing a
+valid code would be told it does not exist about half the time. Scaling out
+needs shared room state first.
+
+A restart also ends every game in progress, which for a party game is a shrug
+rather than a problem.
 
 ## Deploying the static copy
 
