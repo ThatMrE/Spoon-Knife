@@ -39,6 +39,7 @@ public class MainActivity extends Activity {
 
   private WebView webView;
   private HostFinder finder;
+  private HostEngine hostEngine;
   private EditText hostInput;
   private TextView statusText;
   private LinearLayout foundList;
@@ -51,9 +52,10 @@ public class MainActivity extends Activity {
     // browser.
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-    String saved = prefs().getString(KEY_HOST, "");
-    if (saved.isEmpty()) showSetup(null);
-    else connectTo(saved);
+    // Always land on the setup screen: the choice between hosting and joining
+    // is the first thing a player needs, and a remembered address is useless if
+    // last time's host is not around.
+    showSetup(null);
   }
 
   private SharedPreferences prefs() {
@@ -70,11 +72,18 @@ public class MainActivity extends Activity {
     hostInput = findViewById(R.id.host_input);
     statusText = findViewById(R.id.status_text);
     foundList = findViewById(R.id.found_list);
+    Button host = findViewById(R.id.host_button);
     Button connect = findViewById(R.id.connect_button);
     Button find = findViewById(R.id.find_button);
 
     hostInput.setText(prefs().getString(KEY_HOST, ""));
     if (message != null) statusText.setText(message);
+
+    host.setOnClickListener(new View.OnClickListener() {
+      @Override public void onClick(View v) {
+        startHosting();
+      }
+    });
 
     connect.setOnClickListener(new View.OnClickListener() {
       @Override public void onClick(View v) {
@@ -139,6 +148,42 @@ public class MainActivity extends Activity {
     }
   }
 
+  // ─────────────────────────────── hosting ───────────────────────────────
+
+  /**
+   * Run the whole game on this phone: a native listening socket, the game rules
+   * in an off-screen WebView, and this player's own client connecting back to
+   * 127.0.0.1 like anybody else.
+   */
+  private void startHosting() {
+    if (hostEngine != null) return;
+    cancelFinder();
+    statusText.setText(R.string.starting_host);
+
+    hostEngine = new HostEngine(this);
+    hostEngine.start(new HostEngine.Listener() {
+      @Override public void onHosting(int port, String address) {
+        statusText.setText(address == null
+            ? getString(R.string.hosting_no_wifi)
+            : getString(R.string.hosting_at, address + ":" + port));
+        // Join our own ship. The client code has no idea it is the host.
+        connectTo("127.0.0.1:" + port);
+      }
+
+      @Override public void onHostFailed(String reason) {
+        stopHosting();
+        showSetup(reason);
+      }
+    });
+  }
+
+  private void stopHosting() {
+    if (hostEngine != null) {
+      hostEngine.stop();
+      hostEngine = null;
+    }
+  }
+
   // ─────────────────────────────── the game ───────────────────────────────
 
   /** Normalise whatever was typed into a URL and load it. */
@@ -148,7 +193,11 @@ public class MainActivity extends Activity {
       showSetup(getString(R.string.need_address));
       return;
     }
-    prefs().edit().putString(KEY_HOST, address).apply();
+    // Remember real hosts only. Saving the loopback address we use when hosting
+    // would prefill the join box with something that only works while hosting.
+    if (!HostAddress.isLoopback(address)) {
+      prefs().edit().putString(KEY_HOST, address).apply();
+    }
     cancelFinder();
 
     webView = new WebView(this);
@@ -214,12 +263,15 @@ public class MainActivity extends Activity {
   @Override
   public void onBackPressed() {
     // Back leaves the ship and returns to the address screen, so you can hop
-    // to a different host without force-quitting.
+    // to a different host without force-quitting. Leaving a game you were
+    // hosting also takes the ship down with it — the crew would be left aboard
+    // a server nobody is running otherwise.
     if (webView != null) {
       WebView dying = webView;
       webView = null;
       dying.loadUrl("about:blank");
       dying.destroy();
+      stopHosting();
       showSetup(null);
       return;
     }
@@ -229,6 +281,7 @@ public class MainActivity extends Activity {
   @Override
   protected void onDestroy() {
     cancelFinder();
+    stopHosting();
     if (webView != null) {
       webView.destroy();
       webView = null;

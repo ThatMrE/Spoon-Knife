@@ -22,9 +22,14 @@ else opens a URL.
 └─────────────────────────┘        └─────────────────────────┘
 ```
 
-## Running it
+## Two ways to run it
 
-Needs Node 20 or newer. There are **no dependencies** — nothing to install.
+**On a phone, with no laptop at all.** Install the Android app, tap *Host a game
+on this phone*, and everyone else taps *Find ships on this WiFi*. See
+[The Android app](#the-android-app).
+
+**From a laptop**, if you would rather play in the browser. Needs Node 20 or
+newer, and there are **no dependencies** — nothing to install.
 
 ```sh
 git clone <this repo>
@@ -58,14 +63,47 @@ page, that's almost always why.
 
 ## The Android app
 
-There is an installable Android app under `android/`. It is a thin native shell
-around the same web client, which buys three things a browser tab cannot:
+The app under `android/` can both **host** a game and join one, so a phone is
+all you need:
 
+* **Host from a phone.** One phone runs the whole game: a native listening
+  socket, the game rules in an off-screen WebView, and that player's own client
+  connecting back to `127.0.0.1` like anybody else.
 * **It finds the host for you.** Tap *Find ships on this WiFi* and it sweeps
-  your subnet for servers, so nobody reads an IP address out loud.
+  your subnet, so nobody reads an IP address out loud.
 * **The screen never sleeps.** A phone that dims mid-wave was the worst part of
   playing this in a browser.
 * **Real fullscreen, real app icon.** No URL bar eating the top of the console.
+
+### How a phone hosts without a second copy of the rules
+
+The obvious ways to host on Android are both bad: bundling Node adds a large
+native dependency, and porting `core/game.js` to Java would leave two
+implementations of the game free to drift apart.
+
+So the split follows what actually needs to be native. A WebView cannot listen
+on a port, but it runs JavaScript perfectly well — and the game rules were
+already free of any Node API:
+
+```
+  ┌─ host phone ───────────────────────────────────────────┐
+  │  Java    HostServer: TCP, RFC 6455 framing, assets     │
+  │            ↕  open/message/close  ←→  send/close       │
+  │  WebView core/rooms.js + game.js + panel.js + jargon.js│
+  │            (the same files the Node server imports)    │
+  └────────────────────────────────────────────────────────┘
+        ↑ ws://…:3000/ws           ↑ ws://127.0.0.1:3000/ws
+     other phones                  the host's own client
+```
+
+Only transport is written twice — `server/ws.js` in JavaScript and
+`WebSocketFrames.java` in Java — and transport has no game semantics to drift.
+The two are cross-checked against each other: both are pinned to the RFC 6455
+handshake vector, and the Java framing is tested against frames produced by the
+JS implementation and vice versa.
+
+`core/` exists for exactly this reason. It holds the host-agnostic rules and is
+served to browsers, while `server/` is the Node-only transport and is not.
 
 ### Getting the APK
 
@@ -83,23 +121,20 @@ cd android
 # app/build/outputs/apk/debug/app-debug.apk
 ```
 
-### Why it loads the client from the host instead of bundling it
+### The client is always loaded over HTTP, never from `file://`
 
-Bundling the HTML in the APK would put the page on a `file://` or
-`appassets.androidplatform.net` origin while the WebSocket stayed on
-`ws://192.168.x.x`, which browsers treat as mixed content and block. Loading
-everything from the host keeps the page and its socket same-origin cleartext
-HTTP, and means the app can never go stale against a newer server.
+The APK bundles the client, but a phone never opens it as a local file. When
+hosting it is served from the phone's own HTTP server; when joining it is
+fetched from whoever is hosting. Either way the page and its WebSocket share one
+cleartext HTTP origin.
 
-This is also why it is an APK and not a PWA: an installable PWA needs a secure
+That is deliberate. A page on `file://` or `appassets.androidplatform.net`
+talking to `ws://192.168.x.x` is mixed content, and browsers block it. Serving
+over loopback sidesteps the whole problem, and a joining phone also can't go
+stale against a newer host.
+
+It is also why this is an APK and not a PWA: an installable PWA needs a secure
 context, and there is no certificate to be had for `http://192.168.1.24`.
-
-### What the app still needs
-
-The app is a *client*. Something still has to run `node server/index.js` — a
-laptop on the same WiFi. Removing that would mean running the game server on a
-phone, which needs either Node-on-Android or the game rules ported to Java; the
-second would mean two copies of the rules, free to drift apart. See the roadmap.
 
 ## How to play
 
@@ -122,31 +157,38 @@ they're told and report "I touched this gizmo" — they never decide whether an
 instruction was satisfied, and they're never sent anybody else's console.
 
 ```
-server/
-  index.js   HTTP static file serving + /ws upgrade + /discover, prints LAN addresses
-  ws.js      a small RFC 6455 WebSocket server (this is why there are no deps)
-  rooms.js   room codes, crew rosters, ready state, the per-room tick loop
-  game.js    the game itself: waves, instructions, hull, emergencies
-  panel.js   console generation and "is this instruction satisfied?"
-  jargon.js  the nonsense that makes gizmos worth shouting about
+core/            the rules — no Node APIs, so a phone can run them too
+  rooms.js       room codes, crew rosters, ready state, the per-room tick loop
+  game.js        waves, instructions, hull, whole-crew emergencies
+  panel.js       console generation and "is this instruction satisfied?"
+  jargon.js      the nonsense that makes gizmos worth shouting about
+server/          Node-only transport
+  index.js       static serving + /ws upgrade + /discover, prints LAN addresses
+  ws.js          a small RFC 6455 WebSocket server (this is why there are no deps)
 shared/
-  protocol.js  message types, shared verbatim by both halves
+  protocol.js    message types, shared verbatim by every host and client
 public/
   index.html, css/, js/   the client
-test/        node --test suites
-android/     installable Android client (Java, no third-party dependencies)
+  host/          the engine page a hosting phone loads into a WebView
+android/         hosts and joins (Java, no third-party dependencies)
+test/            node --test suites
 ```
 
 `shared/protocol.js` is served to the browser as-is and imported by the server,
 so the two halves can't drift apart on message names.
 
-### Why a LAN server instead of phone-to-phone
+### Why one phone hosts, rather than true peer-to-peer
 
-Browsers can't open sockets directly to each other, and WebRTC needs a
-signalling server anyway — so a phone-to-phone build would still need this
-server, plus a native app to escape the browser. Running one process on a
-laptop keeps it to `node server/index.js` and works on every phone with a
-browser.
+Browsers can't open sockets to each other, and WebRTC needs a signalling server
+anyway — so "peer-to-peer" would still mean somebody running a rendezvous
+service over the internet, which is a strange requirement for a game played in
+one room.
+
+Electing one device to host keeps everything on the local network and gives the
+game a single authority over the hull and the instructions, which is exactly
+what a shared-state game wants. The Node server and the Android host are two
+transports in front of the same `core/`, so which device hosts changes nothing
+about the rules.
 
 ## Tests
 
@@ -168,7 +210,13 @@ npm test
   the layer that catches a server which frames or hashes things wrong; the
   unit tests all passed while no browser could connect.
 
-CI runs the suite on Node 20, 22, 24 and 26 for every pull request.
+There is a second suite for the Android app (`android/app/src/test`), run by
+Gradle on a plain JVM: WebSocket framing against the RFC 6455 vector, JS-string
+escaping, HTTP path safety, and address parsing. Everything fiddly on the Java
+side is deliberately free of Android imports so it can be tested without a
+device.
+
+CI runs the Node suite on Node 20, 22, 24 and 26, and builds the APK.
 
 ## Known limitations
 
@@ -176,9 +224,14 @@ CI runs the suite on Node 20, 22, 24 and 26 for every pull request.
   leaves the crew and their console goes with them; the run continues without
   them. Rejoining means waiting for the next game. (The Android app keeps the
   screen awake, which removes the most common cause.)
-* **The Android app has not been run on a physical device by its author** — it
-  builds and its logic is unit-tested in CI, but the on-device behaviour of the
-  WebView shell and the subnet sweep is unverified. Treat it as a first cut.
+* **The Android app has not been run on a physical device by its author.** It
+  builds, its logic is unit-tested, and the Java host has been driven
+  end-to-end by real browsers on a desktop — but the Android-specific parts
+  (AssetManager, the WebView bridge, the UI) are unverified on a phone. Treat
+  it as a first cut.
+* **A hosting phone must stay in the app** with the screen on. There is no
+  foreground service, so backgrounding the host will eventually stop the game
+  for everybody.
 * **No spectating or mid-game joining** — the ship is sealed at launch.
 * **Rooms live in memory**, so restarting the server ends every game.
 * Audio needs one tap on the page before it will make noise (browser policy),
@@ -186,10 +239,6 @@ CI runs the suite on Node 20, 22, 24 and 26 for every pull request.
 
 ## Roadmap
 
-* **Host from a phone**, so no laptop is needed at all. The honest options are
-  Node-on-Android (keeps one copy of the game rules, adds a big native
-  dependency) or porting `server/game.js` to Java (no new dependency, but two
-  implementations of the rules that will drift). Leaning towards the former.
 * Reconnect-by-name within a grace period
 * More gizmo kinds (keypads, sequences, "hold for 3 seconds")
 * A proper score history, and per-crew records

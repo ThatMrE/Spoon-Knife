@@ -1,36 +1,48 @@
-# Spaceteam LAN — Android client
+# Spaceteam LAN — Android app
 
-A deliberately thin native shell around the web client in `../public`.
+Hosts a game and joins one, so a phone is all you need.
 
 ```
 app/src/main/java/io/github/thatmre/spaceteamlan/
-  MainActivity.java   address screen + fullscreen WebView, keeps the screen awake
-  HostFinder.java     sweeps the local /24 for servers answering /discover
-  HostAddress.java    address parsing and subnet maths — no Android imports
-app/src/test/java/.../HostAddressTest.java
+  MainActivity.java      host-or-join screen, fullscreen WebView, keeps the screen awake
+  HostEngine.java        hosting: the off-screen WebView that runs the game rules
+  HostServer.java        hosting: TCP, HTTP, WebSocket upgrade  (no Android imports)
+  WebSocketFrames.java   RFC 6455 framing                        (no Android imports)
+  WebSocketReader.java   fragmentation, control frames, caps     (no Android imports)
+  HttpRouting.java       URL → asset mapping and path safety     (no Android imports)
+  JsString.java          quoting network text into JS source     (no Android imports)
+  HostAddress.java       address parsing and subnet maths        (no Android imports)
+  LocalNetwork.java      this device's own LAN address           (no Android imports)
+  HostFinder.java        joining: sweeps the /24 for /discover
+app/src/test/java/…      JUnit for every class above that has no Android imports
 ```
 
-## Why it is shaped like this
+## How hosting works
 
-**No third-party dependencies.** Only the Android framework, plus JUnit for
-tests. Nothing to resolve, nothing to keep up to date, and the whole app is
-three files.
+A WebView cannot listen on a port, but it runs JavaScript fine — and the game
+rules in `../core/` use no Node APIs. So the split follows what genuinely has to
+be native:
 
-**`HostAddress` has no Android imports on purpose.** All the logic worth getting
-wrong — parsing whatever someone typed into the address box, and turning an
-interface address into a list of probe targets — lives there so it can be
-unit-tested on a plain JVM without a device or an emulator. Everything else is
-framework glue.
+* **Java** owns the listening socket, the WebSocket framing, and serving the
+  bundled client out of the APK's assets. It knows nothing about the game.
+* **An off-screen WebView** loads `/host/host.html` from that server, which
+  imports `core/rooms.js` — the same file the Node server imports. The rules
+  exist once.
+* **The host's own game** is not special: a second, visible WebView connects
+  back to `127.0.0.1` exactly like any other phone.
 
-**The client is loaded from the host, not bundled.** Bundling would put the page
-on a `file://` origin while the WebSocket stayed on `ws://192.168.x.x`, which
-browsers block as mixed content. Loading from the host keeps page and socket
-same-origin cleartext, and the app can never go stale against a newer server.
+The native↔JS contract is four calls each way (`open`/`message`/`close` in,
+`send`/`close` out) and nothing else crosses the boundary, which is what keeps
+the part that cannot be tested off-device small.
 
-**`usesCleartextTraffic` is on.** There is no certificate to be had for
-`192.168.1.24`, and a network security config cannot express "private ranges
-only". This is also why the app exists instead of a PWA: installable PWAs need
-a secure context.
+## Why so many classes say "no Android imports"
+
+Because that is what makes them testable here. Everything fiddly — framing,
+path safety, JS escaping, address parsing — is plain JDK and covered by JUnit
+running on a desktop JVM. `HostServer` is in that set too, so the whole
+transport can be run locally and driven by real browsers.
+
+What is left needing a phone: `AssetManager`, the WebView bridge, and the UI.
 
 ## Building
 
@@ -38,13 +50,20 @@ Needs the Android SDK (platform 35) and JDK 17:
 
 ```sh
 ./gradlew assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
-./gradlew testDebugUnitTest    # the address/subnet tests
+./gradlew testDebugUnitTest    # the JVM test suite
 ```
 
-CI does both on every push and uploads the APK as an artifact.
+`assembleDebug` also stages `../public`, `../shared` and `../core` into the
+APK's assets (the `bundleWebClient` task), and fails the build if any of the
+files a host cannot start without are missing. CI additionally checks for them
+inside the finished APK.
 
 ## Status
 
-Builds and its logic is tested, but it has **not been run on a physical
-device** — the on-device behaviour of the WebView shell and the subnet sweep is
-unverified. First cut.
+Builds, signed, and its logic is tested. The Java host has been driven
+end-to-end by real browsers on a desktop — full games, waves, emergencies — but
+**it has not been run on a physical Android device**, so `AssetManager`, the
+WebView bridge and the UI are unverified. First cut.
+
+A hosting phone also has to stay in the app with the screen on; there is no
+foreground service yet.

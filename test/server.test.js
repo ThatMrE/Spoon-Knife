@@ -58,8 +58,20 @@ test('the shared protocol module is served to the browser', async () => {
   assert.match(await response.text(), /export const C2S/);
 });
 
+test('the game rules are served, so a browser can host a game', async () => {
+  const response = await get('/core/rooms.js');
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /javascript/);
+  assert.match(await response.text(), /export class RoomManager/);
+});
+
+test('Node-only transport is not served', async () => {
+  assert.equal((await get('/server/ws.js')).status, 404);
+  assert.equal((await get('/server/index.js')).status, 404);
+});
+
 test('server source and package metadata are not reachable over HTTP', async () => {
-  for (const path of ['/../package.json', '/../server/game.js', '/js/../../server/ws.js']) {
+  for (const path of ['/../package.json', '/../server/index.js', '/js/../../server/ws.js']) {
     const response = await get(path);
     assert.ok(response.status === 404 || response.status === 403, `${path} returned ${response.status}`);
   }
@@ -95,6 +107,18 @@ test('/discover reports the live crew count', async () => {
 
 test('/discover ignores a query string', async () => {
   assert.equal((await get('/discover?probe=1')).status, 200);
+});
+
+test('/discover does not leak room codes to the network', async () => {
+  const host = await connect();
+  host.send(C2S.CREATE, { name: 'PRIVATE' });
+  const { code } = await host.waitFor(S2C.WELCOME);
+
+  // The code is the only thing keeping a passer-by on the same WiFi out of the
+  // game, so advertising it would defeat the point of having one.
+  const body = await (await get('/discover')).text();
+  assert.equal(body.includes(code), false, `/discover exposed ${code}`);
+  assert.equal('codes' in JSON.parse(body), false);
 });
 
 // ─────────────────────────────── handshake ───────────────────────────────

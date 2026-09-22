@@ -12,12 +12,19 @@ import { fileURLToPath } from 'node:url';
 
 import { hostname } from 'node:os';
 
-import { RoomManager } from './rooms.js';
+import { RoomManager } from '../core/rooms.js';
 import { attachWebSocketServer } from './ws.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PUBLIC_DIR = join(ROOT, 'public');
-const SHARED_DIR = join(ROOT, 'shared');
+/**
+ * Directories outside public/ that the browser may import from.
+ *
+ * `core/` holds the game rules, which are host-agnostic on purpose: the Node
+ * server and the Android host run the same files rather than two copies of the
+ * rules. Serving them is why a browser can host a game at all.
+ */
+const EXPOSED_DIRS = ['shared', 'core'];
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '0.0.0.0';
 
@@ -51,10 +58,13 @@ export function resolveStatic(urlPath) {
   const rooted = normalize(`/${decoded.replace(/^[/\\]+/, '')}`);
   const relative = rooted === sep || rooted === '/' ? 'index.html' : rooted.slice(1);
 
-  // `/shared/*` is the one module directory the browser shares with the server.
-  const inShared = relative === 'shared' || relative.startsWith(`shared${sep}`);
-  const allowed = inShared ? SHARED_DIR : PUBLIC_DIR;
-  const full = inShared ? join(ROOT, relative) : join(PUBLIC_DIR, relative);
+  // Root-level module directories the browser is allowed to import from;
+  // everything else resolves inside public/.
+  const exposed = EXPOSED_DIRS.find(
+    (dir) => relative === dir || relative.startsWith(dir + sep),
+  );
+  const allowed = exposed ? join(ROOT, exposed) : PUBLIC_DIR;
+  const full = exposed ? join(ROOT, relative) : join(PUBLIC_DIR, relative);
 
   // Belt and braces: confirm containment on the resolved path itself.
   return full === allowed || full.startsWith(allowed + sep) ? full : null;

@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 import { ALL_HANDS, PHASE, S2C } from '../shared/protocol.js';
-import { Game, difficulty } from '../server/game.js';
+import { Game, difficulty } from '../core/game.js';
 import { obey, recorder, seeded } from './helpers.js';
 
 const CREW = [

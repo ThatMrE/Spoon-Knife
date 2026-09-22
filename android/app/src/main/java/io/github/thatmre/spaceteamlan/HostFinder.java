@@ -8,15 +8,10 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
-import java.net.Inet4Address;
-import java.net.InetAddress;
-import java.net.InterfaceAddress;
-import java.net.NetworkInterface;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Enumeration;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -76,7 +71,7 @@ public final class HostFinder {
    * thread; {@code onFinished} is called exactly once unless cancelled.
    */
   public void start(final int port, final Listener listener) {
-    final List<String> candidates = subnetCandidates();
+    final List<String> candidates = LocalNetwork.subnetCandidates();
     if (candidates.isEmpty()) {
       main.post(new Runnable() {
         @Override public void run() {
@@ -118,28 +113,6 @@ public final class HostFinder {
       });
     }
     pool.shutdown();
-  }
-
-  /** Every other address in the /24 containing this device's private IPv4. */
-  static List<String> subnetCandidates() {
-    List<String> out = new ArrayList<String>();
-    try {
-      Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-      while (interfaces != null && interfaces.hasMoreElements()) {
-        NetworkInterface nif = interfaces.nextElement();
-        if (!nif.isUp() || nif.isLoopback()) continue;
-
-        for (InterfaceAddress entry : nif.getInterfaceAddresses()) {
-          InetAddress address = entry.getAddress();
-          if (!(address instanceof Inet4Address) || !address.isSiteLocalAddress()) continue;
-
-          return HostAddress.hostsInSubnet(address.getAddress()); // first usable interface wins
-        }
-      }
-    } catch (Exception ignored) {
-      // No network, or an interface we cannot inspect: fall back to typing it.
-    }
-    return out;
   }
 
   /** Ask one address whether it is a game server. Returns null if it is not. */

@@ -84,4 +84,16 @@ public class HostAddressTest {
     assertTrue(HostAddress.hostsInSubnet(null).isEmpty());
     assertTrue(HostAddress.hostsInSubnet(new byte[] {1, 2, 3}).isEmpty());
   }
+
+  @Test
+  public void recognisesAddressesThatOnlyWorkOnThisPhone() {
+    // Hosting connects the host's own client to loopback; that address must not
+    // be remembered as somewhere to join next time.
+    assertTrue(HostAddress.isLoopback("127.0.0.1:3000"));
+    assertTrue(HostAddress.isLoopback("127.0.0.1"));
+    assertTrue(HostAddress.isLoopback("localhost:3000"));
+    assertTrue(HostAddress.isLoopback("http://127.0.0.1:3000/"));
+    assertFalse(HostAddress.isLoopback("192.168.1.24:3000"));
+    assertFalse(HostAddress.isLoopback("10.0.0.5"));
+  }
 }

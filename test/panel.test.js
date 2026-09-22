@@ -10,7 +10,7 @@ import {
   makeRequirement,
   panelSize,
   publicControl,
-} from '../server/panel.js';
+} from '../core/panel.js';
 import { seeded } from './helpers.js';
 
 test('a generated panel has unique, legally-valued controls', () => {

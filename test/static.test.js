@@ -8,10 +8,13 @@ import { resolveStatic } from '../server/index.js';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PUBLIC_DIR = join(ROOT, 'public');
 const SHARED_DIR = join(ROOT, 'shared');
+const CORE_DIR = join(ROOT, 'core');
 
-/** The only safety property that matters: nothing resolves outside these two. */
+/** The only safety property that matters: nothing resolves outside these. */
 function isContained(path) {
-  return [PUBLIC_DIR, SHARED_DIR].some((dir) => path === dir || path.startsWith(dir + sep));
+  return [PUBLIC_DIR, SHARED_DIR, CORE_DIR].some(
+    (dir) => path === dir || path.startsWith(dir + sep),
+  );
 }
 
 test('the document root serves the client', () => {
@@ -27,14 +30,30 @@ test('the shared protocol module is reachable by both halves of the app', () => 
   assert.match(resolveStatic('/shared/protocol.js'), new RegExp(`shared\\${sep}protocol\\.js$`));
 });
 
+test('the game rules are importable by a browser that wants to host', () => {
+  // The Android host and a browser load these same files; that is the whole
+  // point of core/ being separate from server/.
+  for (const module of ['rooms.js', 'game.js', 'panel.js', 'jargon.js']) {
+    assert.match(resolveStatic(`/core/${module}`), new RegExp(`core\\${sep}${module.replace('.', '\\.')}$`));
+  }
+});
+
+test('Node-only transport is still not reachable', () => {
+  // core/ is exposed, server/ is not.
+  for (const attempt of ['/server/ws.js', '/server/index.js', '/core/../server/ws.js']) {
+    const resolved = resolveStatic(attempt);
+    assert.ok(resolved === null || isContained(resolved), `${attempt} -> ${resolved}`);
+  }
+});
+
 test('traversal out of the served directories is refused', () => {
   for (const attempt of [
     '/../package.json',
     '/../../etc/passwd',
-    '/js/../../server/rooms.js',
+    '/js/../../server/ws.js',
     '/%2e%2e/package.json',
     '/%2e%2e%2f%2e%2e%2fetc/passwd',
-    '/shared/../server/game.js',
+    '/shared/../server/index.js',
     '/shared/../../etc/hosts',
     '/....//....//package.json',
     '//etc/passwd',
@@ -49,9 +68,9 @@ test('traversal out of the served directories is refused', () => {
 });
 
 test('server source is never reachable, however it is spelled', () => {
-  for (const attempt of ['/../server/game.js', '/js/../../server/ws.js', '/../package.json']) {
+  for (const attempt of ['/../server/index.js', '/js/../../server/ws.js', '/../package.json']) {
     const resolved = resolveStatic(attempt);
-    assert.equal(resolved === join(ROOT, 'server', 'game.js'), false);
+    assert.equal(resolved === join(ROOT, 'server', 'index.js'), false);
     assert.equal(resolved === join(ROOT, 'server', 'ws.js'), false);
     assert.equal(resolved === join(ROOT, 'package.json'), false);
   }

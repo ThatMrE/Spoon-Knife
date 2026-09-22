@@ -121,6 +121,29 @@ jobs:
           APKSIGNER=$(ls "$SDK"/build-tools/*/apksigner | tail -1)
           "$APKSIGNER" verify --print-certs "$APK"
 
+          # A phone hosts by serving these out of its own APK. If the asset
+          # copy silently half-ran, the host would 404 on its own client.
+          echo "--- bundled web assets ---"
+          for entry in \
+            assets/web/index.html \
+            assets/web/js/app.js \
+            assets/web/css/style.css \
+            assets/web/host/host.html \
+            assets/web/host/bridge.js \
+            assets/web/shared/protocol.js \
+            assets/web/core/rooms.js \
+            assets/web/core/game.js \
+            assets/web/core/panel.js \
+            assets/web/core/jargon.js
+          do
+            if unzip -l "$APK" "$entry" | grep -q "$entry"; then
+              echo "  ok   $entry"
+            else
+              echo "::error::$entry missing from the APK — a phone could not host"
+              exit 1
+            fi
+          done
+
       - uses: actions/upload-artifact@v4
         with:
           name: spaceteam-lan-debug-apk

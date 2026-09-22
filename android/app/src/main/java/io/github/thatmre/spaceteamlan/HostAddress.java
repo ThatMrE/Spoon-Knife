@@ -46,6 +46,13 @@ public final class HostAddress {
     }
   }
 
+  /** True for addresses that only mean anything on this device. */
+  public static boolean isLoopback(String input) {
+    String host = hostFrom(input);
+    return host.equals("localhost") || host.equals("127.0.0.1") || host.startsWith("127.")
+        || host.equals("::1") || host.equals("[::1]");
+  }
+
   /** The host part of a typed address, without the port. */
   public static String hostFrom(String input) {
     String address = normalise(input);

@@ -2,14 +2,21 @@
 <resources>
   <string name="app_name">Spaceteam LAN</string>
   <string name="tagline">Shout at your friends. Fly the ship.</string>
+
+  <string name="host_game">HOST A GAME ON THIS PHONE</string>
+  <string name="host_blurb">No laptop needed. Everyone else taps “find ships”.</string>
+  <string name="or_join">or join someone else\'s ship</string>
+  <string name="starting_host">Starting the ship…</string>
+  <string name="hosting_at">Hosting at %1$s — other phones can find it.</string>
+  <string name="hosting_no_wifi">Hosting, but this phone has no WiFi address. Others will not find it.</string>
+
   <string name="host_label">Host address</string>
   <string name="host_hint">192.168.1.24:3000</string>
   <string name="connect">BOARD THE SHIP</string>
   <string name="find">FIND SHIPS ON THIS WIFI</string>
   <string name="searching">Sweeping the network…</string>
-  <string name="none_found">No ship found. Is the host running and on this WiFi?</string>
-  <string name="need_address">Type the address the host printed.</string>
+  <string name="none_found">No ship found. Is someone hosting on this WiFi?</string>
+  <string name="need_address">Type the address the host is showing.</string>
   <string name="cant_reach">Could not reach that ship.</string>
-  <string name="retry">TRY AGAIN</string>
   <string name="change_host">CHANGE ADDRESS</string>
 </resources>

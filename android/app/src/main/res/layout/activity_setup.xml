@@ -31,6 +31,38 @@
         android:textColor="@color/ink_dim"
         android:textSize="15sp" />
 
+    <Button
+        android:id="@+id/host_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:backgroundTint="@color/accent"
+        android:text="@string/host_game"
+        android:textColor="@color/accent_ink"
+        android:textSize="17sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="18dp"
+        android:layout_marginTop="6dp"
+        android:gravity="center"
+        android:text="@string/host_blurb"
+        android:textColor="@color/ink_dim"
+        android:textSize="13sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:gravity="center"
+        android:letterSpacing="0.08"
+        android:text="@string/or_join"
+        android:textAllCaps="true"
+        android:textColor="@color/line"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -60,10 +92,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:backgroundTint="@color/accent"
+        android:backgroundTint="@color/bg_raised"
         android:text="@string/connect"
-        android:textColor="@color/accent_ink"
-        android:textSize="17sp"
+        android:textColor="@color/ink"
+        android:textSize="16sp"
         android:textStyle="bold" />
 
     <Button

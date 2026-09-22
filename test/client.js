@@ -11,8 +11,12 @@ import { createHash, randomBytes } from 'node:crypto';
 
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
-/** Mask and frame a text payload the way a browser would. */
-export function encodeClientFrame(text, opcode = 0x1) {
+/**
+ * Mask and frame a text payload the way a browser would.
+ * `opcode` and `fin` are exposed so tests can build control frames and
+ * fragmented messages, not just whole text ones.
+ */
+export function encodeClientFrame(text, { opcode = 0x1, fin = true } = {}) {
   const body = Buffer.from(text, 'utf8');
   const mask = randomBytes(4);
 
@@ -29,7 +33,7 @@ export function encodeClientFrame(text, opcode = 0x1) {
     header[1] = 0x80 | 127;
     header.writeBigUInt64BE(BigInt(body.length), 2);
   }
-  header[0] = 0x80 | opcode;
+  header[0] = (fin ? 0x80 : 0) | opcode;
 
   const masked = Buffer.from(body);
   for (let i = 0; i < masked.length; i++) masked[i] ^= mask[i & 3];
