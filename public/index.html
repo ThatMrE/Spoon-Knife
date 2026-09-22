@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0a0d18">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Spaceteam LAN</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><text y='52' font-size='52'>🚀</text></svg>">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<!-- ─────────────────────────────── HOME ─────────────────────────────── -->
+<section class="screen" id="screen-home" data-active>
+  <div class="stack">
+    <h1 class="logo">SPACE<span>TEAM</span></h1>
+    <p class="tagline">Shout at your friends. Fly the ship. Same WiFi, no app.</p>
+
+    <label class="field">
+      <span>Your name</span>
+      <input id="input-name" type="text" maxlength="14" autocomplete="off"
+             autocapitalize="characters" spellcheck="false" placeholder="PILOT">
+    </label>
+
+    <button class="btn btn-primary" id="btn-create">NEW SHIP</button>
+
+    <div class="divider"><span>or join one</span></div>
+
+    <label class="field">
+      <span>Ship code</span>
+      <input id="input-code" type="text" maxlength="4" autocomplete="off"
+             autocapitalize="characters" spellcheck="false"
+             inputmode="text" class="code-input" placeholder="ABCD">
+    </label>
+    <button class="btn" id="btn-join">BOARD SHIP</button>
+
+    <p class="hint" id="home-hint"></p>
+  </div>
+</section>
+
+<!-- ────────────────────────────── LOBBY ─────────────────────────────── -->
+<section class="screen" id="screen-lobby">
+  <div class="stack">
+    <p class="eyebrow">Ship code — read it out loud</p>
+    <div class="code-display" id="lobby-code">----</div>
+
+    <div class="result-card" id="lobby-result" hidden></div>
+
+    <p class="eyebrow">Crew <span id="lobby-count"></span></p>
+    <ul class="crew" id="lobby-crew"></ul>
+
+    <button class="btn btn-primary" id="btn-ready">I'M READY</button>
+    <button class="btn btn-go" id="btn-start" hidden>LAUNCH</button>
+    <p class="hint" id="lobby-hint"></p>
+    <button class="btn btn-quiet" id="btn-leave">Leave ship</button>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── GAME ─────────────────────────────── -->
+<section class="screen screen-game" id="screen-game">
+  <header class="hud">
+    <div class="hud-row">
+      <span class="hud-tag">WAVE <b id="hud-wave">1</b></span>
+      <span class="hud-tag" id="hud-score">0</span>
+    </div>
+    <div class="meter meter-hull"><div class="meter-fill" id="hull-fill"></div><span class="meter-label" id="hull-label">HULL 100%</span></div>
+    <div class="meter meter-wave"><div class="meter-fill" id="wave-fill"></div><span class="meter-label" id="wave-label">0 / 0</span></div>
+  </header>
+
+  <div class="order" id="order">
+    <div class="order-text" id="order-text">STAND BY…</div>
+    <div class="order-timer"><div class="order-timer-fill" id="order-timer-fill"></div></div>
+  </div>
+
+  <div class="panel" id="panel"></div>
+</section>
+
+<!-- ───────────────────────── OVERLAYS ─────────────────────────── -->
+<div class="overlay" id="overlay-countdown" hidden>
+  <div class="countdown" id="countdown-number">3</div>
+  <p class="countdown-sub">Hold on to something.</p>
+</div>
+
+<div class="overlay overlay-allhands" id="overlay-allhands" hidden>
+  <p class="allhands-text" id="allhands-text"></p>
+  <button class="allhands-btn" id="allhands-btn">DO IT</button>
+  <p class="allhands-pending" id="allhands-pending"></p>
+  <div class="order-timer wide"><div class="order-timer-fill" id="allhands-timer-fill"></div></div>
+</div>
+
+<div class="overlay overlay-wave" id="overlay-wave" hidden>
+  <p class="wave-done" id="wave-done">WAVE CLEAR</p>
+  <p class="wave-sub" id="wave-sub"></p>
+</div>
+
+<div class="overlay overlay-over" id="overlay-over" hidden>
+  <p class="over-title">SHIP LOST</p>
+  <p class="over-reason" id="over-reason"></p>
+  <dl class="over-stats" id="over-stats"></dl>
+  <button class="btn btn-primary" id="btn-again">BACK TO LOBBY</button>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<div class="overlay overlay-dead" id="overlay-dead" hidden>
+  <p class="over-title">SIGNAL LOST</p>
+  <p class="over-reason" id="dead-reason">Lost the connection to the ship.</p>
+  <button class="btn btn-primary" id="btn-reload">RECONNECT</button>
+</div>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>
