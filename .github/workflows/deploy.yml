@@ -3,8 +3,11 @@ name: Deploy server
 # The multiplayer server needs a host that can hold WebSockets open, which
 # static hosting cannot. This puts it on Fly.
 #
-# It needs a FLY_API_TOKEN repository secret (`fly tokens create deploy`).
-# Without it the job says so and stops, rather than failing the build.
+# It needs a FLY_API_TOKEN repository secret. Without it the job says so and
+# stops, rather than failing the build.
+#
+# `fly tokens create deploy` is enough once the app exists; creating the app
+# from here as well needs `fly tokens create org`. See the README.
 on:
   push:
     branches: [master]
@@ -49,6 +52,39 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
         if: steps.token.outputs.configured == 'true'
+
+      # `flyctl deploy` needs the app to exist already — `fly launch` is what
+      # normally creates it, and it is interactive. Create it here when it is
+      # missing, so that minting a token is the only manual step.
+      #
+      # An app-scoped deploy token cannot create apps, so the very first deploy
+      # needs either an org-scoped token or one local `fly apps create`. Saying
+      # which beats failing with a bare "Could not find App".
+      - name: Make sure the app exists
+        if: steps.token.outputs.configured == 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_ORG: ${{ vars.FLY_ORG || 'personal' }}
+        run: |
+          app=$(grep -m1 '^app = ' fly.toml | cut -d'"' -f2)
+
+          if flyctl status --app "$app" >/dev/null 2>&1; then
+            echo "$app already exists"
+            exit 0
+          fi
+
+          echo "$app does not exist yet, creating it in the $FLY_ORG org"
+          flyctl apps create "$app" --org "$FLY_ORG" && exit 0
+
+          echo "::error::Could not create the Fly app '$app'. See the log for what to do."
+          echo "An app-scoped deploy token cannot create apps. Either create the app"
+          echo "once, locally, and keep using the deploy token:"
+          echo "    fly apps create $app"
+          echo "or store an org-scoped token instead, which can:"
+          echo "    fly tokens create org | gh secret set FLY_API_TOKEN"
+          echo "App names are global on Fly: if '$app' is taken by somebody else, pick"
+          echo "another one and change 'app' in fly.toml to match."
+          exit 1
 
       # --remote-only builds on Fly's builders, so this needs no local Docker.
       - name: Deploy

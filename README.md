@@ -250,12 +250,28 @@ fly launch --no-deploy --copy-config --name spaceteam-lan   # first time only
 fly deploy
 ```
 
-To deploy from CI instead, add a token as a repository secret and pushes to
-`master` will do it:
+To deploy from CI instead, store a Fly token as a repository secret. Pushes to
+`master` then deploy, and `gh workflow run deploy.yml` deploys on demand.
+
+The app has to exist before anything can deploy to it, and an app-scoped deploy
+token cannot create one — so either create it yourself and keep the narrow
+token, or give CI a token that can:
 
 ```sh
+# least privilege: make the app once, then a token that can only deploy it
+fly apps create spaceteam-lan
 fly tokens create deploy | gh secret set FLY_API_TOKEN
+
+# or hand CI an org-scoped token and let the workflow create the app
+fly tokens create org | gh secret set FLY_API_TOKEN
 ```
+
+Set a `FLY_ORG` repository variable to put the app somewhere other than
+`personal`. App names are global on Fly, so if `spaceteam-lan` is taken, change
+`app` in `fly.toml` to something that isn't.
+
+The workflow doesn't stop at "deployed": it polls `/discover` on the live URL
+and fails unless the answer is this game server, in public mode.
 
 ### What changes when it is public
 
