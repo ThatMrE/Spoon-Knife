@@ -1,4 +1,4 @@
-package io.github.thatmre.spaceteamlan;
+package io.github.thatmre.sociovia;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -34,12 +34,12 @@ import java.util.concurrent.TimeUnit;
  */
 public final class HostService extends Service {
 
-  private static final String TAG = "SpaceteamHost";
+  private static final String TAG = "SocioviaHost";
   private static final String CHANNEL_ID = "hosting";
   private static final int NOTIFICATION_ID = 1;
 
-  public static final String ACTION_START = "io.github.thatmre.spaceteamlan.START_HOSTING";
-  public static final String ACTION_STOP = "io.github.thatmre.spaceteamlan.STOP_HOSTING";
+  public static final String ACTION_START = "io.github.thatmre.sociovia.START_HOSTING";
+  public static final String ACTION_STOP = "io.github.thatmre.sociovia.STOP_HOSTING";
 
   /**
    * The engine's own JS interval can be throttled once the WebView is
@@ -165,7 +165,7 @@ public final class HostService extends Service {
   private void startTicking() {
     if (ticker != null) return;
     ticker = Executors.newSingleThreadScheduledExecutor(runnable -> {
-      Thread thread = new Thread(runnable, "spaceteam-tick");
+      Thread thread = new Thread(runnable, "sociovia-tick");
       thread.setDaemon(true);
       return thread;
     });
@@ -186,7 +186,7 @@ public final class HostService extends Service {
       PowerManager power = (PowerManager) getSystemService(Context.POWER_SERVICE);
       if (power == null) return;
       // Partial: the CPU stays up so the game ticks, but the screen may sleep.
-      wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "spaceteam:hosting");
+      wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "sociovia:hosting");
       wakeLock.setReferenceCounted(false);
       wakeLock.acquire();
     } catch (Exception e) {

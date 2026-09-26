@@ -63,7 +63,7 @@ node server/index.js
 It prints the addresses it's reachable on:
 
 ```
-  🚀 SPACETEAM LAN
+  🪩 SOCIOVIA
 
   Open this on every phone (same WiFi):
 
@@ -165,7 +165,7 @@ served to browsers, while `server/` is the Node-only transport and is not.
 ### Getting the APK
 
 Every push builds a debug APK in CI. Open the latest **CI** run under the
-repository's Actions tab, and download the `spaceteam-lan-debug-apk` artifact.
+repository's Actions tab, and download the `sociovia-debug-apk` artifact.
 It is signed with the standard Android debug key, so it installs by sideloading
 (you will have to allow install from your browser or file manager).
 
@@ -327,7 +327,7 @@ The game needs a host that can hold a WebSocket open for the length of a game,
 which static hosting cannot. `Dockerfile` and `fly.toml` are set up for Fly:
 
 ```sh
-fly launch --no-deploy --copy-config --name spaceteam-lan   # first time only
+fly launch --no-deploy --copy-config --name sociovia   # first time only
 fly deploy
 ```
 
@@ -340,7 +340,7 @@ token, or give CI a token that can:
 
 ```sh
 # least privilege: make the app once, then a token that can only deploy it
-fly apps create spaceteam-lan
+fly apps create sociovia
 fly tokens create deploy | gh secret set FLY_API_TOKEN
 
 # or hand CI an org-scoped token and let the workflow create the app
@@ -348,7 +348,7 @@ fly tokens create org | gh secret set FLY_API_TOKEN
 ```
 
 Set a `FLY_ORG` repository variable to put the app somewhere other than
-`personal`. App names are global on Fly, so if `spaceteam-lan` is taken, change
+`personal`. App names are global on Fly, so if `sociovia` is taken, change
 `app` in `fly.toml` to something that isn't.
 
 The workflow doesn't stop at "deployed": it polls `/discover` on the live URL

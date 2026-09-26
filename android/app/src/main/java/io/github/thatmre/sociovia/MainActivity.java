@@ -1,4 +1,4 @@
-package io.github.thatmre.spaceteamlan;
+package io.github.thatmre.sociovia;
 
 import android.Manifest;
 import android.app.Activity;
@@ -41,7 +41,7 @@ import java.util.Locale;
  */
 public class MainActivity extends Activity {
 
-  private static final String PREFS = "spaceteam";
+  private static final String PREFS = "sociovia";
   private static final String KEY_HOST = "host";
 
   private static final int REQUEST_NOTIFICATIONS = 101;

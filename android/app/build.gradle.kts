@@ -38,11 +38,11 @@ val bundleWebClient = tasks.register<Sync>("bundleWebClient") {
 tasks.named("preBuild") { dependsOn(bundleWebClient) }
 
 android {
-  namespace = "io.github.thatmre.spaceteamlan"
+  namespace = "io.github.thatmre.sociovia"
   compileSdk = 35
 
   defaultConfig {
-    applicationId = "io.github.thatmre.spaceteamlan"
+    applicationId = "io.github.thatmre.sociovia"
     // Adaptive launcher icons only, so no binary PNGs need to live in git.
     minSdk = 26
     targetSdk = 35

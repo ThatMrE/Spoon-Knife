@@ -1,12 +1,12 @@
 # Deploy the multiplayer server so a game can be played by people who are not
 # in the same room.
 #
-#   fly launch --no-deploy --copy-config --name spaceteam-lan   # first time
+#   fly launch --no-deploy --copy-config --name sociovia   # first time
 #   fly deploy
 #
 # Rooms live in memory, which is the one thing to understand about this config.
 
-app = "spaceteam-lan"
+app = "sociovia"
 primary_region = "lhr"
 
 [build]

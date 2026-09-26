@@ -13,5 +13,5 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "spaceteam-lan"
+rootProject.name = "sociovia"
 include(":app")
