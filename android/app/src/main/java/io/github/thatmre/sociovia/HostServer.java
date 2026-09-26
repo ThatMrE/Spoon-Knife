@@ -1,4 +1,4 @@
-package io.github.thatmre.spaceteamlan;
+package io.github.thatmre.sociovia;
 
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
@@ -60,7 +60,7 @@ public final class HostServer {
   private volatile Thread acceptThread;
 
   /** JSON body for /discover; the owner refreshes it as the crew changes. */
-  private volatile String discoveryJson = "{\"app\":\"spaceteam-lan\"}";
+  private volatile String discoveryJson = "{\"app\":\"sociovia\"}";
 
   public HostServer(int port, AssetSource assets, Events events) {
     this.requestedPort = port;
@@ -76,7 +76,7 @@ public final class HostServer {
     socket.bind(new java.net.InetSocketAddress(requestedPort));
     serverSocket = socket;
 
-    acceptThread = new Thread(this::acceptLoop, "spaceteam-accept");
+    acceptThread = new Thread(this::acceptLoop, "sociovia-accept");
     acceptThread.setDaemon(true);
     acceptThread.start();
   }
@@ -127,7 +127,7 @@ public final class HostServer {
         Socket socket = serverSocket.accept();
         socket.setTcpNoDelay(true);
         socket.setSoTimeout(READ_TIMEOUT_MS);
-        Thread worker = new Thread(() -> handle(socket), "spaceteam-conn");
+        Thread worker = new Thread(() -> handle(socket), "sociovia-conn");
         worker.setDaemon(true);
         worker.start();
       } catch (IOException e) {
@@ -296,7 +296,7 @@ public final class HostServer {
         } finally {
           shutdown();
         }
-      }, "spaceteam-writer-" + id);
+      }, "sociovia-writer-" + id);
       writer.setDaemon(true);
       writer.start();
     }

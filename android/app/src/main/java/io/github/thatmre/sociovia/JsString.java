@@ -1,4 +1,4 @@
-package io.github.thatmre.spaceteamlan;
+package io.github.thatmre.sociovia;
 
 /**
  * Quotes a string so it can be interpolated into JavaScript source.

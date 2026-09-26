@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { hostname } from 'node:os';
 
 import { RoomManager } from '../core/rooms.js';
+import { APP_ID } from '../shared/protocol.js';
 import { ConnectionGuard, clientAddress } from './guard.js';
 import { attachWebSocketServer } from './ws.js';
 
@@ -85,7 +86,7 @@ export function resolveStatic(urlPath) {
  * nobody has to read an IP address out loud. Deliberately tiny and
  * dependency-free: the app fires one of these at every address on the /24.
  */
-export const DISCOVERY_APP_ID = 'spaceteam-lan';
+export const DISCOVERY_APP_ID = APP_ID;
 
 function serveDiscovery(res, rooms) {
   const body = JSON.stringify({
@@ -208,7 +209,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === normalize(process.argv
   const server = createGameServer();
   server.listen(PORT, HOST, () => {
     const addresses = lanAddresses();
-    console.log('\n  🚀 SPACETEAM LAN\n');
+    console.log('\n  🪩 SOCIOVIA\n');
     console.log('  Open this on every phone (same WiFi):\n');
     if (addresses.length === 0) {
       console.log(`    http://localhost:${PORT}   (no LAN address found — is WiFi on?)`);

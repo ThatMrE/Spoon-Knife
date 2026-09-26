@@ -1,8 +1,10 @@
 import { strict as assert } from 'node:assert';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { APP_ID } from '../shared/protocol.js';
 import { resolveStatic } from '../server/index.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -85,4 +87,39 @@ test('server source is never reachable, however it is spelled', () => {
 
 test('malformed encodings are refused rather than guessed at', () => {
   assert.equal(resolveStatic('/%E0%A4%A'), null);
+});
+
+/**
+ * Java cannot import shared/protocol.js or host/bridge.js, so the Android half
+ * carries its own spelling of three names the two halves have to agree on. Each
+ * of them fails silently and confusingly when it drifts — the subnet sweep finds
+ * nothing, or the WebView answers a call that isn't there — so they are checked
+ * here rather than discovered in a pub.
+ */
+const javaSource = async (file) => {
+  const { readFile } = await import('node:fs/promises');
+  return readFile(join(ROOT, 'android/app/src/main/java/io/github/thatmre/sociovia', file), 'utf8');
+};
+
+test('the Android app and the server agree on what this app is called', async () => {
+  const declared = (await javaSource('HostFinder.java')).match(/APP_ID\s*=\s*"([^"]+)"/)?.[1];
+  assert.ok(declared, 'could not find APP_ID in HostFinder.java — has it been renamed?');
+  assert.equal(declared, APP_ID, 'HostFinder.java and shared/protocol.js disagree');
+
+  // The phone answers /discover from its own socket before the engine has said
+  // anything, so this placeholder has to carry the same marker.
+  const fallback = (await javaSource('HostServer.java')).match(/\{\\"app\\":\\"([^\\"]+)/)?.[1];
+  assert.equal(fallback, APP_ID, 'HostServer.java greets a sweep with the wrong name');
+});
+
+test('both ends of the WebView bridge use the same two names', async () => {
+  const engine = await javaSource('HostEngine.java');
+  const bridge = await readFile(join(ROOT, 'public/host/bridge.js'), 'utf8');
+
+  // Java calls into these; the page defines them. A rename on one side alone is
+  // a host that starts, serves the client, and then never ticks.
+  for (const name of ['socioviaHost', 'SocioviaNative']) {
+    assert.ok(engine.includes(name), `HostEngine.java no longer mentions ${name}`);
+    assert.ok(bridge.includes(name), `bridge.js no longer defines ${name}`);
+  }
 });

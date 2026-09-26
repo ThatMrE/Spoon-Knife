@@ -1,4 +1,4 @@
-package io.github.thatmre.spaceteamlan;
+package io.github.thatmre.sociovia;
 
 import android.os.Handler;
 import android.os.Looper;
@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class HostFinder {
 
   /** The marker the server puts in /discover. Must match server/index.js. */
-  private static final String APP_ID = "spaceteam-lan";
+  private static final String APP_ID = "sociovia";
 
   private static final int THREADS = 32;
   private static final int CONNECT_TIMEOUT_MS = 500;

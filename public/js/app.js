@@ -1,7 +1,7 @@
 /**
  * Screen flow and message handling for the client.
  */
-import { ALL_HANDS, C2S, PHASE, S2C } from '/shared/protocol.js';
+import { ALL_HANDS, APP_ID, C2S, PHASE, S2C } from '/shared/protocol.js';
 import { Net } from '/js/net.js';
 import { Loopback } from '/js/loopback.js';
 import { buzz, sfx, unlockAudio } from '/js/feedback.js';
@@ -87,7 +87,7 @@ const state = {
  * only good for the game in progress, and a stale token from yesterday would
  * just produce a confusing refusal on the next launch.
  */
-const SEAT_KEY = 'spaceteam:seat';
+const SEAT_KEY = 'sociovia:seat';
 
 /** Hold the seat in memory; it only becomes resumable once a game is running. */
 function holdSeat(seat) {
@@ -214,7 +214,7 @@ function flashOrder(kind) {
 
 // ───────────────────────────────── home ─────────────────────────────────
 
-el.name.value = localStorage.getItem('spaceteam:name') ?? '';
+el.name.value = localStorage.getItem('sociovia:name') ?? '';
 el.name.addEventListener('input', () => finder.paint());
 el.code.addEventListener('input', () => {
   el.code.value = el.code.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -227,7 +227,7 @@ async function enter(type, extra) {
     el.name.focus();
     return;
   }
-  localStorage.setItem('spaceteam:name', name);
+  localStorage.setItem('sociovia:name', name);
   el.homeHint.textContent = 'Connecting…';
 
   try {
@@ -247,7 +247,7 @@ $('btn-beacon').addEventListener('click', () => finder.beacon());
 
 $('btn-solo').addEventListener('click', async () => {
   const name = el.name.value.trim() || 'SOLO';
-  localStorage.setItem('spaceteam:name', name);
+  localStorage.setItem('sociovia:name', name);
   el.homeHint.textContent = '';
 
   // No server involved: the page runs the rules itself.
@@ -725,7 +725,7 @@ async function detectServer() {
     const response = await fetch('/discover', { cache: 'no-store' });
     if (!response.ok) throw new Error('no server');
     const body = await response.json();
-    if (body.app !== 'spaceteam-lan') throw new Error('not our server');
+    if (body.app !== APP_ID) throw new Error('not our server');
     return body;
   } catch {
     return null;

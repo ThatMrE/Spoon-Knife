@@ -6,6 +6,16 @@
  * "I touched this control" or "I did this motion".
  */
 
+/**
+ * What this app calls itself on the wire.
+ *
+ * It is the marker /discover answers with, the one the Android app's subnet
+ * sweep matches on, and the one the browser checks before offering multiplayer.
+ * Three places that must agree, so it is spelled once — the fourth is
+ * HostFinder.java, which cannot import this and is checked against it by a test.
+ */
+export const APP_ID = 'sociovia';
+
 /** Client -> server. */
 export const C2S = {
   CREATE: 'create',       // { name }

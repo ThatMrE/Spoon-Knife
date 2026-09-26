@@ -1,4 +1,4 @@
-package io.github.thatmre.spaceteamlan;
+package io.github.thatmre.sociovia;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -29,7 +29,7 @@ import java.io.InputStream;
  */
 public final class HostEngine {
 
-  private static final String TAG = "SpaceteamHost";
+  private static final String TAG = "SocioviaHost";
   /** Fixed so other phones can guess it, and so the sweep has one port to probe. */
   public static final int PORT = 3000;
 
@@ -77,7 +77,7 @@ public final class HostEngine {
    * everyone else is still playing.
    */
   public void tick() {
-    deliver("window.spaceteamHost && window.spaceteamHost.tick()");
+    deliver("window.socioviaHost && window.socioviaHost.tick()");
   }
 
   /** Start listening and boot the engine. Must be called on the main thread. */
@@ -111,16 +111,16 @@ public final class HostEngine {
 
     server = new HostServer(PORT, assets, new HostServer.Events() {
       @Override public void onOpen(final String id) {
-        deliver("spaceteamHost.open(" + JsString.quote(id) + ")");
+        deliver("socioviaHost.open(" + JsString.quote(id) + ")");
       }
 
       @Override public void onMessage(final String id, final String text) {
         // `text` came off the network, so it must be quoted rather than spliced.
-        deliver("spaceteamHost.message(" + JsString.quote(id) + "," + JsString.quote(text) + ")");
+        deliver("socioviaHost.message(" + JsString.quote(id) + "," + JsString.quote(text) + ")");
       }
 
       @Override public void onClose(final String id) {
-        deliver("spaceteamHost.close(" + JsString.quote(id) + ")");
+        deliver("socioviaHost.close(" + JsString.quote(id) + ")");
       }
     });
 
@@ -135,7 +135,7 @@ public final class HostEngine {
     engine = new WebView(context);
     engine.getSettings().setJavaScriptEnabled(true);
     engine.getSettings().setDomStorageEnabled(true);
-    engine.addJavascriptInterface(new Bridge(), "SpaceteamNative");
+    engine.addJavascriptInterface(new Bridge(), "SocioviaNative");
     engine.setWebChromeClient(new WebChromeClient() {
       @Override
       public boolean onConsoleMessage(ConsoleMessage message) {
@@ -177,7 +177,7 @@ public final class HostEngine {
       server = null;
     }
     if (engine != null) {
-      engine.evaluateJavascript("window.spaceteamHost && window.spaceteamHost.shutdown()", null);
+      engine.evaluateJavascript("window.socioviaHost && window.socioviaHost.shutdown()", null);
       engine.destroy();
       engine = null;
     }

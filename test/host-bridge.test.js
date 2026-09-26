@@ -226,7 +226,7 @@ test('the host advertises itself and its crew for /discover', () => {
   host.startStatusUpdates(50);
 
   const status = wire.statuses[wire.statuses.length - 1];
-  assert.equal(status.app, 'spaceteam-lan', 'the marker the sweep matches on');
+  assert.equal(status.app, 'sociovia', 'the marker the sweep matches on');
   assert.equal(status.host, 'ADA-PHONE', 'taken from the native side');
   assert.equal(status.players, 1);
   assert.equal(status.rooms, 1);

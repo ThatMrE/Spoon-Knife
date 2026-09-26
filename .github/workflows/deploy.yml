@@ -109,7 +109,7 @@ jobs:
 
           body=$(curl -s "$url/discover")
           echo "  /discover: $body"
-          echo "$body" | grep -q '"app":"spaceteam-lan"' || {
+          echo "$body" | grep -q '"app":"sociovia"' || {
             echo "::error::$url is not answering as the game server"; exit 1; }
           echo "$body" | grep -q '"public":true' || {
             echo "::error::$url is not in public mode"; exit 1; }
