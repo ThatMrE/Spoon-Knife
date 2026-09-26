@@ -9,7 +9,7 @@
  * This module is pure game state driven by `tick(now)`, with no knowledge of
  * sockets, so it can be tested by stepping a fake clock.
  */
-import { ALL_HANDS, PHASE, S2C } from '../shared/protocol.js';
+import { ALL_HANDS, C2S, GAMES, PHASE, S2C } from '../shared/protocol.js';
 import { ALL_HANDS_COPY, phrase, pick } from './jargon.js';
 import {
   applyInput,
@@ -228,6 +228,29 @@ export class Game {
   }
 
   // ------------------------------------------------------------ player input
+
+  /**
+   * Route a client message.
+   *
+   * Every game engine in core/games/ offers this same method, so a room can
+   * host any of them without knowing which one it has.
+   */
+  input(playerId, msg, now = Date.now()) {
+    if (msg?.t === C2S.CONTROL) this.handleControl(playerId, msg.controlId, msg.value, now);
+    else if (msg?.t === C2S.MOTION) this.handleMotion(playerId, msg.kind, now);
+  }
+
+  /** What the lobby shows about the run that just ended. */
+  result() {
+    return {
+      game: GAMES.SPACETEAM,
+      title: 'Spaceteam',
+      score: this.score,
+      wave: this.wave,
+      completed: this.completed,
+      missed: this.missed,
+    };
+  }
 
   /** A client reports touching one of its own controls. */
   handleControl(playerId, controlId, value, now = Date.now()) {

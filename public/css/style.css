@@ -356,3 +356,116 @@ input[type="range"]::-moz-range-thumb { width: 28px; height: 28px; border-radius
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* ─────────────────────────── the party games ───────────────────────────
+   Bar rules: one thumb, targets you can hit while holding a drink, and
+   nothing that needs reading twice. */
+
+.games { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.game-choice {
+  width: 100%; display: flex; flex-direction: column; gap: 3px;
+  padding: 12px 15px; text-align: left;
+  background: var(--bg-raised); color: var(--ink);
+  border: 2px solid var(--line); border-radius: var(--radius);
+  font: inherit;
+}
+.game-choice[data-chosen] { border-color: var(--accent); background: #102a2e; }
+.game-choice:disabled { opacity: 1; } /* not-host is read-only, not greyed out */
+.game-title { font-weight: 800; letter-spacing: 0.04em; }
+.game-blurb { font-size: 13px; color: var(--ink-dim); font-weight: 500; }
+.game-choice[data-chosen] .game-title { color: var(--accent); }
+
+.screen-party { padding: calc(var(--safe-top) + 8px) 12px calc(var(--safe-bottom) + 12px); display: none; }
+.screen-party[data-active] { display: flex; flex-direction: column; gap: 10px; min-height: 100%; }
+
+.party-prompt {
+  padding: 18px 14px; border-radius: var(--radius);
+  background: var(--bg-raised); border: 2px solid var(--line);
+  text-align: center; font-size: 25px; font-weight: 800; line-height: 1.15;
+  text-wrap: balance;
+}
+.party-note { margin: 0; text-align: center; font-size: 13px; color: var(--ink-dim); }
+/* Pushed down the screen: the answer is what a thumb has to reach, and a bar
+   is the wrong place to ask somebody to stretch for the top of their phone. */
+.party-input { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+.party-waiting { margin: 0; min-height: 20px; text-align: center; font-size: 14px; color: var(--warn); font-weight: 700; }
+
+/* A number chosen by thumb: nobody uses a keypad holding a pint. */
+.dial-number { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+.dial-value {
+  text-align: center; font-size: 58px; font-weight: 800; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.dial-value::after { content: " " attr(data-label); font-size: 15px; color: var(--ink-dim); font-weight: 700; }
+.dial-steppers { display: flex; gap: 10px; }
+.dial-step {
+  flex: 1; min-height: 66px; font-size: 30px; font-weight: 800;
+  background: var(--bg-raised); color: var(--ink);
+  border: 2px solid var(--line); border-radius: var(--radius);
+}
+.dial-step:disabled { color: var(--line); }
+.dial-step:active:not(:disabled) { background: var(--line); }
+.dial-quick { display: flex; gap: 8px; }
+.dial-preset {
+  flex: 1; min-height: 44px; font-size: 12px; font-weight: 800; letter-spacing: 0.1em;
+  background: none; color: var(--ink-dim);
+  border: 2px solid var(--line); border-radius: 99px;
+}
+
+/* Pick a person. Names are the only label that matters. */
+.pick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.pick {
+  min-height: 62px; padding: 10px;
+  font-size: 19px; font-weight: 800; letter-spacing: 0.02em;
+  background: var(--bg-raised); color: var(--ink);
+  border: 2px solid var(--line); border-radius: var(--radius);
+  overflow: hidden; text-overflow: ellipsis;
+}
+.pick:active { transform: scale(0.975); }
+.pick.is-chosen { border-color: var(--accent); background: #102a2e; color: var(--accent); }
+
+.sealed {
+  padding: 22px 14px; border-radius: var(--radius);
+  background: var(--bg-sunken); border: 2px dashed var(--line);
+  text-align: center; font-weight: 800; letter-spacing: 0.08em; color: var(--accent);
+}
+
+/* Don't Say It. */
+.claim { display: flex; flex-direction: column; gap: 10px; }
+.claim-word {
+  padding: 16px; border-radius: var(--radius);
+  background: var(--bg-sunken); border: 2px solid var(--accent);
+  text-align: center; font-size: 34px; font-weight: 800; color: var(--accent);
+}
+.claim-hint { margin: 0; text-align: center; font-size: 13px; color: var(--ink-dim); }
+.accused {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 16px; border-radius: var(--radius);
+  background: #35141d; border: 2px solid var(--danger);
+}
+.accused-text { margin: 0; text-align: center; font-size: 19px; font-weight: 800; }
+.accused-row { display: flex; gap: 10px; }
+.accused-row .btn { flex: 1; }
+
+/* The reveal: everybody's answer at once, which is the whole point. */
+.party-reveal {
+  padding: 12px; border-radius: var(--radius);
+  background: var(--bg-sunken); border: 2px solid var(--line);
+}
+.party-reveal-note { margin: 0 0 8px; text-align: center; font-weight: 800; color: var(--warn); }
+.party-entries { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.party-entries li { display: flex; align-items: baseline; gap: 8px; padding: 7px 10px; border-radius: 10px; background: var(--bg-raised); }
+.party-entries li.is-winner { border: 2px solid var(--good); padding: 5px 8px; }
+.party-entries li.is-me .who { color: var(--accent); }
+.party-entries .who { flex: 1; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.party-entries .shown { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.party-entries .detail { text-align: right; font-size: 11px; color: var(--ink-dim); font-weight: 700; }
+
+.standings { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.standings li { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; background: var(--bg-raised); font-weight: 700; }
+.standings li.is-me { border: 2px solid var(--accent); padding: 6px 10px; }
+.standings li.is-out { opacity: 0.45; }
+.standings .rank { font-size: 12px; color: var(--ink-dim); min-width: 14px; }
+.standings .who { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.standings .score { font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.standings .word-reveal { display: block; font-size: 13px; font-weight: 500; color: var(--ink-dim); background: none; }

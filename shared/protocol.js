@@ -18,6 +18,12 @@ export const C2S = {
   RESTART: 'restart',     // host only
   LEAVE: 'leave',
   PONG: 'pong',
+
+  // Party games (see core/sealed.js and core/games/).
+  PICK_GAME: 'pickGame',  // { game } — host only, in the lobby
+  SUBMIT: 'submit',       // { round, value } — one sealed answer per round
+  CLAIM: 'claim',         // { targetId } — "they said my word"
+  CONFIRM: 'confirm',     // { claimId, ok } — the accused settles it
 };
 
 /** Server -> client. */
@@ -36,6 +42,36 @@ export const S2C = {
   WAVE: 'wave',               // { wave, hull }
   GAME_OVER: 'gameOver',      // { score, wave, completed, reason }
   PING: 'ping',
+
+  // Party games. A round's prompt is public, but what a round hands *you* is
+  // not, so ROUND is addressed per player.
+  ROUND: 'round',             // { game, title, round, of, prompt, note, input, you, duration }
+  SUBMITTED: 'submitted',     // { round, count, of } — progress, never values
+  REVEAL: 'reveal',           // { round, of, entries[], note, standings[] }
+  STANDINGS: 'standings',     // { standings[] }
+  SECRET: 'secret',           // { word } — yours alone
+  CLAIM_ASK: 'claimAsk',      // { claimId, byId, by, target, word, duration }
+  CLAIM_DONE: 'claimDone',    // { claimId, ok, by, target, word, points, reason }
+  PARTY_OVER: 'partyOver',    // { game, title, standings[], winners[] }
+};
+
+/**
+ * The games a room can play. Titles and blurbs live with the games themselves
+ * (core/games/index.js) and reach the client in the lobby, so adding a game
+ * does not mean editing the client.
+ */
+export const GAMES = {
+  SPACETEAM: 'spaceteam',
+  BIDS: 'bids',
+  SUPERLATIVES: 'superlatives',
+  TABOO: 'taboo',
+};
+
+/** What a sealed round asks a phone to collect. */
+export const INPUT = {
+  NUMBER: 'number', // integer between min and max
+  PLAYER: 'player', // somebody in the room, never yourself
+  CLAIM: 'claim',   // "they said it" — not a sealed round, a running accusation
 };
 
 /** Room lifecycle. */

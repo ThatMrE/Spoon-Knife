@@ -7,11 +7,17 @@ import { Loopback } from '/js/loopback.js';
 import { buzz, sfx, unlockAudio } from '/js/feedback.js';
 import { MotionWatcher } from '/js/motion.js';
 import { renderGizmo } from '/js/gizmos.js';
+import { createParty } from '/js/party.js';
 
 const $ = (id) => document.getElementById(id);
 
 const el = {
-  screens: { home: $('screen-home'), lobby: $('screen-lobby'), game: $('screen-game') },
+  screens: {
+    home: $('screen-home'),
+    lobby: $('screen-lobby'),
+    game: $('screen-game'),
+    party: $('screen-party'),
+  },
   staticNote: $('static-note'),
   multiplayer: $('multiplayer-controls'),
   name: $('input-name'),
@@ -22,6 +28,7 @@ const el = {
   lobbyCount: $('lobby-count'),
   lobbyHint: $('lobby-hint'),
   lobbyResult: $('lobby-result'),
+  lobbyGames: $('lobby-games'),
   btnReady: $('btn-ready'),
   btnStart: $('btn-start'),
   hudWave: $('hud-wave'),
@@ -148,6 +155,12 @@ function runTimerBar(node, durationMs) {
   return () => cancelAnimationFrame(frame);
 }
 
+const party = createParty({
+  send: (type, payload) => net.send(type, payload),
+  me: () => state.playerId,
+  timerBar: (node, ms) => runTimerBar(node, ms),
+});
+
 let cancelOrderTimer = () => {};
 let cancelAllHandsTimer = () => {};
 
@@ -246,6 +259,11 @@ el.btnAgain.addEventListener('click', () => {
   show('lobby');
 });
 
+$('btn-party-again').addEventListener('click', () => {
+  party.hideOver();
+  show('lobby');
+});
+
 $('btn-reload').addEventListener('click', () => location.reload());
 
 // ─────────────────────────────── all hands ───────────────────────────────
@@ -315,15 +333,46 @@ function wire(transport) {
       }),
     );
 
+    el.lobbyGames.replaceChildren(
+      ...(msg.games ?? []).map((game) => {
+        const li = document.createElement('li');
+        const choice = document.createElement('button');
+        choice.className = 'game-choice';
+        choice.toggleAttribute('data-chosen', game.key === msg.game);
+        // Everyone sees what is picked; only the host can change it.
+        choice.disabled = !state.isHost;
+
+        const title = document.createElement('span');
+        title.className = 'game-title';
+        title.textContent = game.title;
+
+        const blurb = document.createElement('span');
+        blurb.className = 'game-blurb';
+        blurb.textContent =
+          game.minPlayers > msg.players.length
+            ? `Needs ${game.minPlayers} players.`
+            : game.blurb;
+
+        choice.append(title, blurb);
+        choice.addEventListener('click', () => net.send(C2S.PICK_GAME, { game: game.key }));
+        li.append(choice);
+        return li;
+      }),
+    );
+
     el.btnStart.hidden = !state.isHost;
     el.btnReady.hidden = state.isHost;
     el.lobbyHint.textContent = state.isHost
-      ? 'Everyone needs to be ready before you can launch.'
+      ? 'Pick a game, then launch once everyone is ready.'
       : '';
 
     if (msg.lastResult) {
       el.lobbyResult.hidden = false;
-      el.lobbyResult.textContent = `Last run: wave ${msg.lastResult.wave} · ${msg.lastResult.score} pts`;
+      const last = msg.lastResult;
+      // Spaceteam reports a run; the party games report a table.
+      el.lobbyResult.textContent = last.standings
+        ? `${last.title}: ${last.standings.map((p) => `${p.name} ${p.score}`).join(' · ')}`
+        : `${last.title}: wave ${last.wave} · ${last.score} pts`;
     }
 
     if (msg.phase === PHASE.LOBBY && el.screens.game.hasAttribute('data-active')) show('lobby');
@@ -463,6 +512,46 @@ function wire(transport) {
       }),
     );
     el.over.hidden = false;
+    forgetSeat();
+    sfx.over();
+    buzz([200, 80, 200]);
+  })
+
+  .on(S2C.ROUND, (msg) => {
+    // A round in progress is worth rejoining, same as a console.
+    armSeat();
+    party.round(msg);
+    show('party');
+    sfx.order();
+  })
+
+  .on(S2C.SUBMITTED, (msg) => party.submitted(msg))
+
+  .on(S2C.REVEAL, (msg) => {
+    party.reveal(msg);
+    sfx.wave();
+    buzz(30);
+  })
+
+  .on(S2C.STANDINGS, (msg) => party.standings(msg))
+
+  .on(S2C.SECRET, (msg) => party.secret(msg))
+
+  .on(S2C.CLAIM_ASK, (msg) => {
+    party.claimAsk(msg);
+    if (msg.target !== state.playerId) return;
+    // Being accused is the one moment a phone in a pocket has to interrupt you.
+    sfx.alarm();
+    buzz([80, 60, 80]);
+  })
+
+  .on(S2C.CLAIM_DONE, (msg) => {
+    party.claimDone(msg);
+    if (msg.ok) sfx.good();
+  })
+
+  .on(S2C.PARTY_OVER, (msg) => {
+    party.over(msg);
     forgetSeat();
     sfx.over();
     buzz([200, 80, 200]);

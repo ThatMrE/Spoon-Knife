@@ -57,6 +57,9 @@
 
     <div class="result-card" id="lobby-result" hidden></div>
 
+    <p class="eyebrow">Game</p>
+    <ul class="games" id="lobby-games"></ul>
+
     <p class="eyebrow">Crew <span id="lobby-count"></span></p>
     <ul class="crew" id="lobby-crew"></ul>
 
@@ -86,6 +89,30 @@
   <div class="panel" id="panel"></div>
 </section>
 
+<!-- ────────────────────────────── PARTY ─────────────────────────────── -->
+<section class="screen screen-party" id="screen-party">
+  <header class="hud">
+    <div class="hud-row">
+      <span class="hud-tag" id="party-title">GAME</span>
+      <span class="hud-tag" id="party-round"></span>
+    </div>
+    <div class="order-timer wide"><div class="order-timer-fill" id="party-timer-fill"></div></div>
+  </header>
+
+  <div class="party-prompt" id="party-prompt">STAND BY…</div>
+  <p class="party-note" id="party-note"></p>
+
+  <div class="party-input" id="party-input"></div>
+  <p class="party-waiting" id="party-waiting"></p>
+
+  <div class="party-reveal" id="party-reveal" hidden>
+    <p class="party-reveal-note" id="party-reveal-note"></p>
+    <ul class="party-entries" id="party-entries"></ul>
+  </div>
+
+  <ul class="standings" id="party-standings"></ul>
+</section>
+
 <!-- ───────────────────────── OVERLAYS ─────────────────────────── -->
 <div class="overlay" id="overlay-countdown" hidden>
   <div class="countdown" id="countdown-number">3</div>
@@ -109,6 +136,13 @@
   <p class="over-reason" id="over-reason"></p>
   <dl class="over-stats" id="over-stats"></dl>
   <button class="btn btn-primary" id="btn-again">BACK TO LOBBY</button>
+</div>
+
+<div class="overlay overlay-over" id="overlay-party-over" hidden>
+  <p class="over-title" id="party-over-title">RESULTS</p>
+  <p class="over-reason" id="party-over-winner"></p>
+  <ul class="standings" id="party-over-standings"></ul>
+  <button class="btn btn-primary" id="btn-party-again">BACK TO LOBBY</button>
 </div>
 
 <div class="toast" id="toast" hidden></div>
