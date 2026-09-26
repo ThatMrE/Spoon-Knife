@@ -167,10 +167,13 @@ jobs:
             assets/web/index.html \
             assets/web/js/app.js \
             assets/web/js/party.js \
+            assets/web/js/side.js \
+            assets/web/js/find.js \
             assets/web/css/style.css \
             assets/web/host/host.html \
             assets/web/host/bridge.js \
             assets/web/shared/protocol.js \
+            assets/web/shared/looks.js \
             assets/web/core/rooms.js \
             assets/web/core/game.js \
             assets/web/core/panel.js \
@@ -222,8 +225,9 @@ jobs:
 
           # Every path the client imports has to resolve inside the image, or
           # the page loads and then dies on a missing module.
-          for path in / /js/app.js /js/loopback.js /js/party.js /css/style.css \
-                      /shared/protocol.js /core/rooms.js /core/game.js /host/bridge.js \
+          for path in / /js/app.js /js/loopback.js /js/party.js /js/side.js /js/find.js \
+                      /css/style.css /shared/protocol.js /shared/looks.js \
+                      /core/rooms.js /core/game.js /host/bridge.js \
                       /core/sealed.js /core/games/index.js /core/games/bids.js \
                       /core/games/superlatives.js /core/games/taboo.js
           do

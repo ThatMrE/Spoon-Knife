@@ -1,15 +1,27 @@
-# 🚀 Spaceteam LAN
+# 🪩 Sociovia
 
 [![CI](https://github.com/ThatMrE/Spoon-Knife/actions/workflows/ci.yml/badge.svg)](https://github.com/ThatMrE/Spoon-Knife/actions/workflows/ci.yml)
 
-A shout-at-your-friends co-op party game for phones on the same WiFi. It's a
-recreation of [Spaceteam](https://spaceteam.ca/): everyone holds a console full
-of gizmos nobody else can see, and everyone is given instructions for gizmos
-that are usually on *somebody else's* console. The only way to fly the ship is
-to yell.
+**Bar games for people who haven't met yet.**
 
-No app store, no accounts, no internet. One laptop runs the server, everybody
-else opens a URL.
+Connecting to a bar's WiFi is the entire install. You get a list of the tables
+in the room, you tap one, and you are playing something daft with the four
+people two tables over inside a minute. The games are deliberately stupid and
+short, because they are not the point — they are the excuse to talk to somebody
+you would otherwise spend the whole evening not talking to.
+
+The hard part of that is never the matching. It is the twenty seconds
+afterwards, where four people stand up and scan a dark room for each other. So
+everybody picks a colour and a symbol, says what they are wearing and roughly
+where they are sitting, and can hold their phone up as a flag.
+
+No app store, no accounts, no internet. One laptop — or one Android phone —
+runs it for the room, and everybody else opens a URL.
+
+It started as a recreation of [Spaceteam](https://spaceteam.ca/), which is
+still the loudest game in it: everyone holds a console full of gizmos nobody
+else can see, and everyone is given instructions for gizmos that are usually on
+*somebody else's* console. The only way to fly the ship is to yell.
 
 ```
 ┌─────────────────────────┐        ┌─────────────────────────┐
@@ -200,6 +212,25 @@ context, and there is no certificate to be had for `http://192.168.1.24`.
 Works with 1–8 players. Solo is a decent tutorial; it's a party game from three
 up.
 
+## Finding each other
+
+The lobby is not the bar. Somebody still has to walk over.
+
+* **Tables here right now.** The home screen lists the tables in this room that
+  are waiting for people — who is sitting there, what they look like, and where
+  they are. Tap one to sit down; no code, no typing.
+* **A colour and a symbol.** Four taps, from a fixed list. It is a closed
+  vocabulary on purpose: free text would be a way to send a stranger anything at
+  all, and there is no moderator in a pub.
+* **Your phone as a flag.** Tap your own card and the screen becomes your colour
+  and symbol, full bleed, with your name. It is the only thing that reliably
+  works across a loud, dark room.
+
+**Tables are listed on a LAN only.** On the public server they are not, because
+a room code is the only thing between a game and the internet, and publishing
+every code would take the door off. Out there you type a code somebody read to
+you.
+
 ## The other games
 
 Spaceteam needs a crew who already know each other well enough to shout. The
@@ -224,6 +255,13 @@ have to confirm it. Being caught costs nothing, on purpose — a penalty would
 teach people to say less, and the whole point is to get them talking. It is the
 only game here you cannot win without talking to people you have not met.
 
+It is not on the list of games, because it is not something you play *instead*
+of one. The host switches it on and it runs **underneath** whatever else is
+happening, for the whole session — through launches, results and lobbies — as a
+strip along the bottom of the screen and one overlay for the moment somebody
+accuses you. That is the only shape it works in: a game you play instead of
+talking is a game that stops you talking.
+
 All three are **sealed**: answers are collected privately and revealed at the
 same instant, so nobody can react to somebody else's, and a slow phone on bar
 WiFi is never a disadvantage. That is what makes them work where Spaceteam's
@@ -245,12 +283,13 @@ core/            the rules — no Node APIs, so a phone can run them too
   games/         one file per game, plus the catalogue the lobby offers
     bids.js        Sealed Bids (a sealed-round definition)
     superlatives.js  Who In This Bar (a sealed-round definition)
-    taboo.js       Don't Say It (its own engine: a claim/confirm handshake)
+    taboo.js       Don't Say It (its own engine, running under the others)
 server/          Node-only transport
   index.js       static serving + /ws upgrade + /discover, prints LAN addresses
   ws.js          a small RFC 6455 WebSocket server (this is why there are no deps)
 shared/
   protocol.js    message types, shared verbatim by every host and client
+  looks.js       the closed vocabulary for "this is what I look like"
 public/
   index.html, css/, js/   the client
   host/          the engine page a hosting phone loads into a WebView
@@ -407,10 +446,8 @@ CI runs the Node suite on Node 20, 22, 24 and 26, and builds the APK.
 ## Roadmap
 
 * More gizmo kinds (keypads, sequences, "hold for 3 seconds")
-* **Don't Say It running underneath the other games**, which is where it
-  belongs — it is written as a standalone round for now because a room hosts one
-  engine at a time
 * More sealed-round games: they are about a hundred lines each now
+* Table names, so a list of them reads as more than a row of first names
 * A proper score history, and per-crew records
 * Optional QR code in the terminal so nobody has to type an IP address
 

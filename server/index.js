@@ -107,6 +107,32 @@ function serveDiscovery(res, rooms) {
   res.end(body);
 }
 
+/**
+ * The tables in this bar right now, for somebody deciding whether to walk over.
+ *
+ * On a LAN this is exactly right: everybody who can reach this endpoint is
+ * already in the room. On a public server it would publish every room code on
+ * the box, and a room code is the only thing between a game and the whole
+ * internet — so out there it returns nothing and the client falls back to
+ * typing a code somebody read out loud.
+ */
+function serveTables(res, rooms) {
+  const body = JSON.stringify({
+    app: DISCOVERY_APP_ID,
+    public: IS_PUBLIC,
+    // Not "an empty bar": "this is not the kind of server that lists tables".
+    listing: !IS_PUBLIC,
+    tables: IS_PUBLIC ? [] : rooms.openTables(),
+  });
+  res.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body),
+    'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': '*',
+  });
+  res.end(body);
+}
+
 async function serveStatic(req, res) {
   const path = resolveStatic(req.url ?? '/');
   if (!path) {
@@ -143,7 +169,9 @@ export function lanAddresses() {
 export function createGameServer({ guard = new ConnectionGuard(), trustProxy = TRUST_PROXY } = {}) {
   const rooms = new RoomManager({ guard });
   const server = createServer((req, res) => {
-    if ((req.url ?? '').split('?')[0] === '/discover') serveDiscovery(res, rooms);
+    const path = (req.url ?? '').split('?')[0];
+    if (path === '/discover') serveDiscovery(res, rooms);
+    else if (path === '/tables') serveTables(res, rooms);
     else serveStatic(req, res);
   });
 
