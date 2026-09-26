@@ -26,12 +26,18 @@ const REQUIRED = [
   'css/style.css',
   'js/app.js',
   'js/loopback.js',
+  'js/party.js',
   'host/bridge.js',
   'shared/protocol.js',
   'core/rooms.js',
   'core/game.js',
   'core/panel.js',
   'core/jargon.js',
+  'core/sealed.js',
+  'core/games/index.js',
+  'core/games/bids.js',
+  'core/games/superlatives.js',
+  'core/games/taboo.js',
 ];
 
 await rm(OUT, { recursive: true, force: true });

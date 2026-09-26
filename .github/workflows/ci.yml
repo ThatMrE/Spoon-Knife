@@ -166,6 +166,7 @@ jobs:
           for entry in \
             assets/web/index.html \
             assets/web/js/app.js \
+            assets/web/js/party.js \
             assets/web/css/style.css \
             assets/web/host/host.html \
             assets/web/host/bridge.js \
@@ -173,7 +174,12 @@ jobs:
             assets/web/core/rooms.js \
             assets/web/core/game.js \
             assets/web/core/panel.js \
-            assets/web/core/jargon.js
+            assets/web/core/jargon.js \
+            assets/web/core/sealed.js \
+            assets/web/core/games/index.js \
+            assets/web/core/games/bids.js \
+            assets/web/core/games/superlatives.js \
+            assets/web/core/games/taboo.js
           do
             if unzip -l "$APK" "$entry" | grep -q "$entry"; then
               echo "  ok   $entry"
@@ -216,8 +222,10 @@ jobs:
 
           # Every path the client imports has to resolve inside the image, or
           # the page loads and then dies on a missing module.
-          for path in / /js/app.js /js/loopback.js /css/style.css \
-                      /shared/protocol.js /core/rooms.js /core/game.js /host/bridge.js
+          for path in / /js/app.js /js/loopback.js /js/party.js /css/style.css \
+                      /shared/protocol.js /core/rooms.js /core/game.js /host/bridge.js \
+                      /core/sealed.js /core/games/index.js /core/games/bids.js \
+                      /core/games/superlatives.js /core/games/taboo.js
           do
             code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080$path")
             [ "$code" = "200" ] || fail "$path returned $code from the container"

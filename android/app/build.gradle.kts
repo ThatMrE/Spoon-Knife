@@ -22,9 +22,10 @@ val bundleWebClient = tasks.register<Sync>("bundleWebClient") {
     // check the handful of files the host cannot start without.
     val root = webAssets.get().dir("web").asFile
     val required = listOf(
-      "index.html", "js/app.js", "css/style.css",
+      "index.html", "js/app.js", "js/party.js", "css/style.css",
       "host/host.html", "host/bridge.js",
       "shared/protocol.js", "core/rooms.js", "core/game.js",
+      "core/sealed.js", "core/games/index.js", "core/games/taboo.js",
     )
     val missing = required.filterNot { File(root, it).isFile }
     if (missing.isNotEmpty()) {

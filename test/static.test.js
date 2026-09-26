@@ -33,8 +33,15 @@ test('the shared protocol module is reachable by both halves of the app', () => 
 test('the game rules are importable by a browser that wants to host', () => {
   // The Android host and a browser load these same files; that is the whole
   // point of core/ being separate from server/.
-  for (const module of ['rooms.js', 'game.js', 'panel.js', 'jargon.js']) {
+  for (const module of ['rooms.js', 'game.js', 'panel.js', 'jargon.js', 'sealed.js']) {
     assert.match(resolveStatic(`/core/${module}`), new RegExp(`core\\${sep}${module.replace('.', '\\.')}$`));
+  }
+});
+
+test('the party games are importable too, one directory down', () => {
+  for (const module of ['index.js', 'bids.js', 'superlatives.js', 'taboo.js']) {
+    const resolved = resolveStatic(`/core/games/${module}`);
+    assert.match(resolved, new RegExp(`core\\${sep}games\\${sep}${module.replace('.', '\\.')}$`));
   }
 });
 

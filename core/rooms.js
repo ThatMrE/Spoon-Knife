@@ -3,7 +3,7 @@
  * and the tick loop that drives each room's Game.
  */
 import { C2S, LIMITS, PHASE, S2C } from '../shared/protocol.js';
-import { Game } from './game.js';
+import { CATALOGUE, DEFAULT_GAME, catalogueEntry, createEngine, isGame } from './games/index.js';
 
 /** No I/O/0/1 — these get read aloud and typed in on a phone. */
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -49,13 +49,37 @@ export class Room {
     this.emptySince = Date.now();
     this.lastResult = null;
 
-    this.game = new Game({
+    this.gameKey = DEFAULT_GAME;
+    this.game = this.makeEngine();
+    this.timer = null;
+  }
+
+  /**
+   * Build the engine for the chosen game.
+   *
+   * Rebuilt rather than reset on every launch, because a game's whole state —
+   * chips, secret words, which prompts have been used — belongs to one run.
+   */
+  makeEngine() {
+    return createEngine(this.gameKey, {
       transport: {
         toPlayer: (playerId, message) => this.players.get(playerId)?.connection.send(message),
         toAll: (message) => this.broadcast(message),
       },
     });
-    this.timer = null;
+  }
+
+  /** The host chooses what the room is playing. */
+  pickGame(playerId, key) {
+    if (playerId !== this.hostId) return { error: 'Only the host can pick the game.' };
+    if (this.phase !== PHASE.LOBBY) return { error: 'Finish this one first.' };
+    if (!isGame(key)) return { error: 'No such game.' };
+    if (key === this.gameKey) return {};
+
+    this.gameKey = key;
+    this.game = this.makeEngine();
+    this.pushLobby();
+    return {};
   }
 
   broadcast(message) {
@@ -210,6 +234,14 @@ export class Room {
     if (this.phase !== PHASE.LOBBY) return { error: 'Already flying.' };
     if (this.players.size < LIMITS.MIN_PLAYERS) return { error: 'Nobody aboard.' };
 
+    const game = catalogueEntry(this.gameKey);
+    const aboard = [...this.players.values()].filter((p) => p.connected);
+    if (aboard.length < game.minPlayers) {
+      return {
+        error: `${game.title} needs ${game.minPlayers} player${game.minPlayers === 1 ? '' : 's'}.`,
+      };
+    }
+
     const slackers = [...this.players.values()].filter(
       (p) => p.id !== this.hostId && p.connected && !p.ready,
     );
@@ -219,9 +251,8 @@ export class Room {
 
     this.phase = PHASE.PLAYING;
     this.lastResult = null;
-    this.game.start(
-      [...this.players.values()].filter((p) => p.connected).map(({ id, name }) => ({ id, name })),
-    );
+    this.game = this.makeEngine();
+    this.game.start(aboard.map(({ id, name }) => ({ id, name })));
     this.pushLobby();
     this.startTimer();
     return {};
@@ -244,7 +275,7 @@ export class Room {
       this.clearGrace(player);
       if (!player.connected) this.players.delete(player.id);
     }
-    this.lastResult = { score: this.game.score, wave: this.game.wave };
+    this.lastResult = this.game.result();
     for (const player of this.players.values()) player.ready = false;
     this.pushLobby();
   }
@@ -269,6 +300,8 @@ export class Room {
       hostId: this.hostId,
       phase: this.phase,
       lastResult: this.lastResult,
+      game: this.gameKey,
+      games: CATALOGUE,
       players: [...this.players.values()].map((p) => ({
         id: p.id,
         name: p.name,
@@ -424,12 +457,20 @@ export class RoomManager {
           break;
         }
 
-        case C2S.CONTROL:
-          session.room?.game.handleControl(session.playerId, msg.controlId, msg.value);
+        case C2S.PICK_GAME: {
+          const result = session.room?.pickGame(session.playerId, String(msg.game ?? ''));
+          if (result?.error) fail(result.error);
           break;
+        }
 
+        // Everything a game itself understands goes to the engine unread: the
+        // room does not know or care which game it is hosting.
+        case C2S.CONTROL:
         case C2S.MOTION:
-          session.room?.game.handleMotion(session.playerId, msg.kind);
+        case C2S.SUBMIT:
+        case C2S.CLAIM:
+        case C2S.CONFIRM:
+          session.room?.game.input(session.playerId, msg);
           break;
 
         case C2S.LEAVE:

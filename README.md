@@ -200,6 +200,35 @@ context, and there is no certificate to be had for `http://192.168.1.24`.
 Works with 1–8 players. Solo is a decent tutorial; it's a party game from three
 up.
 
+## The other games
+
+Spaceteam needs a crew who already know each other well enough to shout. The
+other three are built for the opposite situation: a bar, two groups who have
+never met, and nobody willing to go first. The host picks one in the lobby.
+
+**Sealed Bids** — a prize is on the table, everyone secretly bids chips for it,
+the highest bid takes it, and *everybody pays what they bid*. A tie means nobody
+wins and everybody still pays. Chips are a budget for the whole game, so running
+dry is a real way to lose. One sentence of rules and a reveal that is an
+accusation every time.
+
+**Who In This Bar** — "Who in this bar would survive longest in a zombie
+apocalypse?" Vote for somebody other than yourself. The winner scores, and so
+does anybody who picked the winner — which turns it from a popularity contest
+into a guess about how a room full of strangers sees each other. Every prompt is
+one you would be pleased to win; nothing about looks, money or competence.
+
+**Don't Say It** — you get a common word in secret, and you score by getting
+*somebody else* to say it in ordinary conversation. Tap the moment they do; they
+have to confirm it. Being caught costs nothing, on purpose — a penalty would
+teach people to say less, and the whole point is to get them talking. It is the
+only game here you cannot win without talking to people you have not met.
+
+All three are **sealed**: answers are collected privately and revealed at the
+same instant, so nobody can react to somebody else's, and a slow phone on bar
+WiFi is never a disadvantage. That is what makes them work where Spaceteam's
+millisecond deadlines would not.
+
 ## How it's put together
 
 The server is authoritative about everything that matters. Clients render what
@@ -212,6 +241,11 @@ core/            the rules — no Node APIs, so a phone can run them too
   game.js        waves, instructions, hull, whole-crew emergencies
   panel.js       console generation and "is this instruction satisfied?"
   jargon.js      the nonsense that makes gizmos worth shouting about
+  sealed.js      deal → collect sealed answers → reveal at once → score
+  games/         one file per game, plus the catalogue the lobby offers
+    bids.js        Sealed Bids (a sealed-round definition)
+    superlatives.js  Who In This Bar (a sealed-round definition)
+    taboo.js       Don't Say It (its own engine: a claim/confirm handshake)
 server/          Node-only transport
   index.js       static serving + /ws upgrade + /discover, prints LAN addresses
   ws.js          a small RFC 6455 WebSocket server (this is why there are no deps)
@@ -226,6 +260,14 @@ test/            node --test suites
 
 `shared/protocol.js` is served to the browser as-is and imported by the server,
 so the two halves can't drift apart on message names.
+
+Every engine speaks the same lifecycle — `start`, `tick`, `input`,
+`setConnected`, `removePlayer`, `isOver`, `result()` — so a room hosts any of
+them without knowing which. Two of the four games are not engines at all, just
+definitions handed to `sealed.js`: prompts, an input shape and a scoring
+function. The phone learns what kind of answer to collect from the round it is
+sent, so a new sealed game needs one file in `core/games/` and nothing in the
+client.
 
 ### Why one phone hosts, rather than true peer-to-peer
 
@@ -365,6 +407,10 @@ CI runs the Node suite on Node 20, 22, 24 and 26, and builds the APK.
 ## Roadmap
 
 * More gizmo kinds (keypads, sequences, "hold for 3 seconds")
+* **Don't Say It running underneath the other games**, which is where it
+  belongs — it is written as a standalone round for now because a room hosts one
+  engine at a time
+* More sealed-round games: they are about a hundred lines each now
 * A proper score history, and per-crew records
 * Optional QR code in the terminal so nobody has to type an IP address
 
