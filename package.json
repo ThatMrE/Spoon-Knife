@@ -1,7 +1,7 @@
 {
-  "name": "spaceteam-lan",
+  "name": "sociovia",
   "version": "0.1.0",
-  "description": "A local-WiFi, shout-at-each-other co-op party game for phones. A recreation of Spaceteam that runs in the browser with zero dependencies.",
+  "description": "Bar games for people who have not met yet. Runs on a local WiFi with zero dependencies; Spaceteam is one of the games.",
   "type": "module",
   "private": true,
   "main": "server/index.js",

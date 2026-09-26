@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <string name="app_name">Spaceteam LAN</string>
+  <string name="app_name">Sociovia</string>
   <string name="tagline">Shout at your friends. Fly the ship.</string>
 
   <string name="host_game">HOST A GAME ON THIS PHONE</string>
@@ -22,7 +22,7 @@
 
   <string name="notification_channel">Hosting a game</string>
   <string name="notification_channel_description">Shown while this phone is running a game for other players.</string>
-  <string name="notification_title">Spaceteam LAN — hosting</string>
+  <string name="notification_title">Sociovia — hosting</string>
   <string name="notification_starting">Starting the ship…</string>
   <string name="notification_stop">STOP HOSTING</string>
   <string name="notification_no_wifi">no WiFi address</string>

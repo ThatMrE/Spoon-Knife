@@ -8,7 +8,7 @@
  *
  * The contract with the native side is four calls each way:
  *
- *   native → JS   spaceteamHost.open(id) / .message(id, text) / .close(id)
+ *   native → JS   socioviaHost.open(id) / .message(id, text) / .close(id)
  *   JS → native   native.send(id, text) / native.close(id)
  *
  * `id` is an opaque per-connection string minted by the native side. Nothing
@@ -16,7 +16,7 @@
  */
 // Relative on purpose: this resolves to /core/rooms.js in the WebView *and*
 // to core/rooms.js on disk, so the tests exercise the real module graph.
-import { PHASE } from '../../shared/protocol.js';
+import { APP_ID, PHASE } from '../../shared/protocol.js';
 import { RoomManager } from '../../core/rooms.js';
 
 /**
@@ -134,7 +134,7 @@ export function createHost(native) {
         // Deliberately not the room codes: the code is the only thing keeping a
         // passer-by on the same WiFi out of your game, so it is not broadcast
         // to anyone who sweeps the network.
-        native.status(JSON.stringify({ app: 'spaceteam-lan', host: name, rooms: roomCount, players }));
+        native.status(JSON.stringify({ app: APP_ID, host: name, rooms: roomCount, players }));
       };
       push();
       statusTimer = setInterval(push, everyMs);
@@ -152,8 +152,8 @@ export function createHost(native) {
 }
 
 // In the hosting WebView the native object is injected before this page loads.
-if (typeof window !== 'undefined' && window.SpaceteamNative) {
-  window.spaceteamHost = createHost(window.SpaceteamNative);
-  window.spaceteamHost.startStatusUpdates();
-  window.SpaceteamNative.hostReady();
+if (typeof window !== 'undefined' && window.SocioviaNative) {
+  window.socioviaHost = createHost(window.SocioviaNative);
+  window.socioviaHost.startStatusUpdates();
+  window.SocioviaNative.hostReady();
 }

@@ -1,4 +1,4 @@
-package io.github.thatmre.spaceteamlan;
+package io.github.thatmre.sociovia;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

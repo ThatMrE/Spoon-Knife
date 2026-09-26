@@ -194,7 +194,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: spaceteam-lan-debug-apk
+          name: sociovia-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
@@ -210,18 +210,18 @@ jobs:
       # built here. Build it and prove the container serves a game, rather than
       # finding out at deploy time.
       - name: Build the image
-        run: docker build -t spaceteam-lan:ci .
+        run: docker build -t sociovia:ci .
 
       - name: Run it and check it serves the game
         run: |
-          docker run -d --name spaceteam -p 8080:8080 spaceteam-lan:ci
+          docker run -d --name sociovia -p 8080:8080 sociovia:ci
 
           for attempt in $(seq 1 30); do
             if curl -sf -o /dev/null http://127.0.0.1:8080/discover; then break; fi
             sleep 1
           done
 
-          fail() { echo "::error::$1"; docker logs spaceteam || true; docker rm -f spaceteam; exit 1; }
+          fail() { echo "::error::$1"; docker logs sociovia || true; docker rm -f sociovia; exit 1; }
 
           # Every path the client imports has to resolve inside the image, or
           # the page loads and then dies on a missing module.
@@ -240,7 +240,7 @@ jobs:
           echo "  /discover: $body"
           echo "$body" | grep -q '"public":true' \
             || fail "the image must run in public mode (PUBLIC_SERVER=1)"
-          echo "$body" | grep -q '"app":"spaceteam-lan"' \
+          echo "$body" | grep -q '"app":"sociovia"' \
             || fail "/discover is not identifying the app"
 
           # Server source must not be reachable, same as anywhere else.
@@ -248,10 +248,10 @@ jobs:
           [ "$code" = "404" ] || fail "server source was served from the container ($code)"
           echo "  ok   /server/ws.js is not served"
 
-          docker rm -f spaceteam
+          docker rm -f sociovia
 
       - name: Check it runs unprivileged
         run: |
-          user=$(docker run --rm --entrypoint sh spaceteam-lan:ci -c 'id -un')
+          user=$(docker run --rm --entrypoint sh sociovia:ci -c 'id -un')
           echo "container user: $user"
           [ "$user" = "node" ] || { echo "::error::image runs as $user, not node"; exit 1; }

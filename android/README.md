@@ -1,9 +1,9 @@
-# Spaceteam LAN — Android app
+# Sociovia — Android app
 
 Hosts a game and joins one, so a phone is all you need.
 
 ```
-app/src/main/java/io/github/thatmre/spaceteamlan/
+app/src/main/java/io/github/thatmre/sociovia/
   MainActivity.java      host-or-join screen, fullscreen WebView, keeps the screen awake
   HostService.java       hosting: foreground service, wake lock, notification, tick
   HostEngine.java        hosting: the off-screen WebView that runs the game rules
