@@ -24,6 +24,7 @@ export const C2S = {
   SUBMIT: 'submit',       // { round, value } — one sealed answer per round
   CLAIM: 'claim',         // { targetId } — "they said my word"
   CONFIRM: 'confirm',     // { claimId, ok } — the accused settles it
+  SIDE_GAME: 'sideGame',  // { on } — host runs Don't Say It under everything else
 };
 
 /** Server -> client. */
@@ -53,6 +54,7 @@ export const S2C = {
   CLAIM_ASK: 'claimAsk',      // { claimId, byId, by, target, word, duration }
   CLAIM_DONE: 'claimDone',    // { claimId, ok, by, target, word, points, reason }
   PARTY_OVER: 'partyOver',    // { game, title, standings[], winners[] }
+  SIDE: 'side',               // { on, title, standings[], words[]? } — the game underneath
 };
 
 /**
@@ -64,6 +66,11 @@ export const GAMES = {
   SPACETEAM: 'spaceteam',
   BIDS: 'bids',
   SUPERLATIVES: 'superlatives',
+  /**
+   * Not in the lobby's list of games: it runs *underneath* whichever one is,
+   * for the whole session, which is the only place it makes sense. See
+   * core/games/taboo.js.
+   */
   TABOO: 'taboo',
 };
 

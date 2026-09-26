@@ -52,12 +52,25 @@ export class Taboo {
    * @param {object} options
    * @param {{toPlayer(id, msg): void, toAll(msg): void}} options.transport
    * @param {() => number} [options.random] injectable for deterministic tests
-   * @param {number} [options.durationMs]
+   * @param {number|null} [options.durationMs] null runs until it is turned off
+   * @param {boolean} [options.side] run underneath another game rather than as one
    */
-  constructor({ transport, random = Math.random, durationMs = DEFAULT_DURATION_MS }) {
+  constructor({
+    transport,
+    random = Math.random,
+    durationMs = DEFAULT_DURATION_MS,
+    side = false,
+  }) {
     this.transport = transport;
     this.random = random;
     this.durationMs = durationMs;
+    /**
+     * Side mode is where this game belongs. It takes no screen of its own: no
+     * round is dealt, so whatever is in front of you stays in front of you, and
+     * the only thing it puts on the glass is your word and the moment somebody
+     * is accused.
+     */
+    this.side = side;
 
     this.phase = PHASE.LOBBY;
     /** @type {Map<string, {id, name, connected, score, word}>} */
@@ -96,14 +109,40 @@ export class Taboo {
     this.claims.clear();
     this.cooldowns.clear();
     this.phase = PHASE.PLAYING;
-    this.endsAt = now + this.durationMs;
+    // An open-ended side game outlasts every round played on top of it.
+    this.endsAt = this.durationMs === null ? Infinity : now + this.durationMs;
     this.endedReason = null;
 
     const taken = new Set();
     for (const { id, name } of roster) {
       this.players.set(id, { id, name, connected: true, score: 0, word: this._word(taken) });
     }
+    // Each briefing carries the state with it, so no extra broadcast is needed.
     for (const player of this.players.values()) this._sendBriefing(player, now);
+  }
+
+  /**
+   * Somebody arrived after the game started.
+   *
+   * Only side mode uses this: a round-based game has a roster for its duration,
+   * but a game running underneath the evening has to let people walk in.
+   */
+  addPlayer({ id, name }, now = Date.now()) {
+    if (this.phase !== PHASE.PLAYING || this.players.has(id)) return;
+    this.players.set(id, {
+      id,
+      name,
+      connected: true,
+      score: 0,
+      word: this._word(this._takenWords()),
+    });
+    this._sendBriefing(this.players.get(id), now);
+    this._pushState();
+  }
+
+  /** The host turned it off. */
+  stop(now = Date.now(), reason = 'Stopped.') {
+    this._end(reason, now);
   }
 
   tick(now = Date.now()) {
@@ -138,8 +177,11 @@ export class Taboo {
       }
     }
     if (this.players.size === 0) this._end('Everyone wandered off.');
-    else if (this.players.size < taboo.minPlayers) this._end('Not enough people left to catch.');
-    else this._pushStandings();
+    // A side game with one person left is not over, it is quiet: there is simply
+    // nobody to catch until somebody else walks in.
+    else if (!this.side && this.players.size < taboo.minPlayers) {
+      this._end('Not enough people left to catch.');
+    } else this._pushState();
   }
 
   result() {
@@ -170,7 +212,13 @@ export class Taboo {
   }
 
   _sendBriefing(player, now) {
-    this.transport.toPlayer(player.id, { t: S2C.SECRET, word: player.word });
+    this.transport.toPlayer(player.id, { t: S2C.SECRET, word: player.word, side: this.side });
+    // Side mode deals no round: hijacking the screen is exactly what it must not
+    // do. The word arrives above whatever game is already there.
+    if (this.side) {
+      this.transport.toPlayer(player.id, this._stateMessage());
+      return;
+    }
     this.transport.toPlayer(player.id, {
       t: S2C.ROUND,
       game: taboo.key,
@@ -215,6 +263,7 @@ export class Taboo {
       targetName: target.name,
       word: by.word,
       duration: CLAIM_MS,
+      side: this.side,
     });
   }
 
@@ -250,12 +299,19 @@ export class Taboo {
       word: claim.word,
       points: ok ? CATCH_POINTS : 0,
       reason,
+      side: this.side,
     });
-    this._pushStandings();
+    this._pushState();
   }
 
-  _pushStandings() {
-    this.transport.toAll({ t: S2C.STANDINGS, standings: this.standings });
+  _stateMessage() {
+    return { t: S2C.SIDE, on: true, title: taboo.title, standings: this.standings };
+  }
+
+  _pushState() {
+    this.transport.toAll(
+      this.side ? this._stateMessage() : { t: S2C.STANDINGS, standings: this.standings },
+    );
   }
 
   _end(reason) {
@@ -263,8 +319,11 @@ export class Taboo {
     this.phase = PHASE.OVER;
     this.endedReason = reason;
     const { standings, winners } = this.result();
+    // A side game bows out where it lived — in its own strip, not over the top
+    // of whatever game is on screen.
     this.transport.toAll({
-      t: S2C.PARTY_OVER,
+      t: this.side ? S2C.SIDE : S2C.PARTY_OVER,
+      on: this.side ? false : undefined,
       game: taboo.key,
       title: taboo.title,
       standings,

@@ -7,8 +7,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Spaceteam LAN</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><text y='52' font-size='52'>🚀</text></svg>">
+<title>Sociovia</title>
+<meta name="description" content="Bar games for people who haven't met yet. Same WiFi, no app, no accounts.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><text y='52' font-size='52'>🪩</text></svg>">
 <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -16,34 +17,69 @@
 <!-- ─────────────────────────────── HOME ─────────────────────────────── -->
 <section class="screen" id="screen-home" data-active>
   <div class="stack">
-    <h1 class="logo">SPACE<span>TEAM</span></h1>
-    <p class="tagline">Shout at your friends. Fly the ship. Same WiFi, no app.</p>
+    <h1 class="logo">SOCIO<span>VIA</span></h1>
+    <p class="tagline">Bar games for people who haven't met yet.</p>
+
+    <ol class="premise">
+      <li><b>Get on the bar's WiFi.</b> That's the entire install — no account, no app store, nothing to download.</li>
+      <li><b>Join a table, or start one</b> and read the four letters out loud to the people you want to play.</li>
+      <li><b>Pick a colour and a symbol</b> so you can actually find each other across a dark, loud room.</li>
+      <li><b>Play something daft.</b> The game is the excuse. Talking to strangers is the point.</li>
+    </ol>
 
     <label class="field">
       <span>Your name</span>
       <input id="input-name" type="text" maxlength="14" autocomplete="off"
-             autocapitalize="characters" spellcheck="false" placeholder="PILOT">
+             autocapitalize="characters" spellcheck="false" placeholder="ADA">
     </label>
+
+    <section class="finder">
+      <p class="eyebrow">How to find you</p>
+      <button class="look-preview" id="look-preview" type="button">
+        <span class="look-emblem" id="look-emblem">🦊</span>
+        <span class="look-words">
+          <span class="look-name" id="look-name">You</span>
+          <span class="look-detail" id="look-detail">Tap to hold up your phone</span>
+        </span>
+      </button>
+
+      <div class="swatches" id="look-colours"></div>
+      <div class="emblems" id="look-emblems"></div>
+
+      <p class="finder-label">Wearing</p>
+      <div class="chips" id="look-wearing"></div>
+      <p class="finder-label">Sitting</p>
+      <div class="chips" id="look-spot"></div>
+    </section>
 
     <p class="static-note" id="static-note" hidden></p>
 
     <div id="multiplayer-controls">
-      <button class="btn btn-primary" id="btn-create">NEW SHIP</button>
+      <div class="divider"><span>tables here right now</span></div>
+      <ul class="tables" id="tables"></ul>
+      <p class="hint" id="tables-hint">Looking…</p>
 
-      <div class="divider"><span>or join one</span></div>
+      <button class="btn btn-primary" id="btn-create">START A TABLE</button>
 
-    <label class="field">
-      <span>Ship code</span>
-      <input id="input-code" type="text" maxlength="4" autocomplete="off"
-             autocapitalize="characters" spellcheck="false"
-             inputmode="text" class="code-input" placeholder="ABCD">
-    </label>
-      <button class="btn" id="btn-join">BOARD SHIP</button>
+      <div class="divider"><span>or type a code somebody read out</span></div>
+
+      <label class="field">
+        <span>Table code</span>
+        <input id="input-code" type="text" maxlength="4" autocomplete="off"
+               autocapitalize="characters" spellcheck="false"
+               inputmode="text" class="code-input" placeholder="ABCD">
+      </label>
+      <button class="btn" id="btn-join">JOIN THAT TABLE</button>
     </div>
 
-    <div class="divider"><span>or fly it alone</span></div>
+    <div class="divider"><span>not in the bar yet?</span></div>
     <button class="btn" id="btn-solo">PRACTICE SOLO</button>
-    <p class="solo-note">One console, no shouting. Good for learning the panel.</p>
+    <p class="solo-note">One phone, no shouting. Good for seeing what this is.</p>
+    <p class="solo-note">
+      There's an <a href="https://github.com/ThatMrE/Spoon-Knife#getting-the-apk" rel="noreferrer">Android
+      app</a> too — it can <strong>host the whole thing from a phone</strong>, so a table works even
+      where there's no laptop and no internet at all.
+    </p>
 
     <p class="hint" id="home-hint"></p>
   </div>
@@ -52,7 +88,7 @@
 <!-- ────────────────────────────── LOBBY ─────────────────────────────── -->
 <section class="screen" id="screen-lobby">
   <div class="stack">
-    <p class="eyebrow">Ship code — read it out loud</p>
+    <p class="eyebrow">Table code — read it out loud</p>
     <div class="code-display" id="lobby-code">----</div>
 
     <div class="result-card" id="lobby-result" hidden></div>
@@ -60,13 +96,21 @@
     <p class="eyebrow">Game</p>
     <ul class="games" id="lobby-games"></ul>
 
-    <p class="eyebrow">Crew <span id="lobby-count"></span></p>
+    <p class="eyebrow">Who's here <span id="lobby-count"></span></p>
     <ul class="crew" id="lobby-crew"></ul>
+    <button class="btn btn-quiet" id="btn-beacon">Hold up my phone so they can find me</button>
+
+    <p class="eyebrow">Underneath everything</p>
+    <button class="side-toggle" id="btn-side" aria-pressed="false">
+      <span class="side-toggle-title" id="side-title">Don't Say It</span>
+      <span class="side-toggle-blurb" id="side-blurb"></span>
+      <span class="side-toggle-state" id="side-state">OFF</span>
+    </button>
 
     <button class="btn btn-primary" id="btn-ready">I'M READY</button>
     <button class="btn btn-go" id="btn-start" hidden>LAUNCH</button>
     <p class="hint" id="lobby-hint"></p>
-    <button class="btn btn-quiet" id="btn-leave">Leave ship</button>
+    <button class="btn btn-quiet" id="btn-leave">Leave the table</button>
   </div>
 </section>
 
@@ -143,6 +187,35 @@
   <p class="over-reason" id="party-over-winner"></p>
   <ul class="standings" id="party-over-standings"></ul>
   <button class="btn btn-primary" id="btn-party-again">BACK TO LOBBY</button>
+</div>
+
+<button class="side-chip" id="side-chip" hidden>
+  <span class="side-chip-label">DON'T SAY</span>
+  <span class="side-chip-word" id="side-word">…</span>
+  <span class="side-chip-score" id="side-score">0</span>
+</button>
+
+<div class="overlay overlay-side" id="overlay-side" hidden>
+  <p class="eyebrow">Get somebody to say</p>
+  <div class="claim-word" id="side-sheet-word">…</div>
+  <p class="claim-hint">Tap whoever just said it. They have to agree it happened.</p>
+  <div class="pick-grid" id="side-people"></div>
+  <ul class="standings" id="side-standings"></ul>
+  <button class="btn btn-quiet" id="side-close">Close</button>
+</div>
+
+<div class="overlay overlay-accused" id="overlay-accused" hidden>
+  <p class="accused-text" id="accused-text"></p>
+  <div class="accused-row">
+    <button class="btn btn-go" id="accused-yes">I DID</button>
+    <button class="btn" id="accused-no">NEVER</button>
+  </div>
+</div>
+
+<div class="overlay overlay-beacon" id="overlay-beacon" hidden>
+  <div class="beacon-emblem" id="beacon-emblem">🦊</div>
+  <div class="beacon-name" id="beacon-name">YOU</div>
+  <p class="beacon-sub">Hold it up. Tap anywhere to put it away.</p>
 </div>
 
 <div class="toast" id="toast" hidden></div>

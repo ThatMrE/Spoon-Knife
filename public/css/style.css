@@ -20,6 +20,12 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+/* Any author rule that sets `display` beats the browser's own `[hidden]`, so
+   every component that styles display needs this — which is a thing to forget
+   exactly once per component. Said here once instead. (It cost a chip floating
+   over the home page.) */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   height: 100%;
@@ -469,3 +475,110 @@ input[type="range"]::-moz-range-thumb { width: 28px; height: 28px; border-radius
 .standings .who { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .standings .score { font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .standings .word-reveal { display: block; font-size: 13px; font-weight: 500; color: var(--ink-dim); background: none; }
+
+/* ─────────────────── finding each other in the room ───────────────────
+   The part of the app that happens with your head up rather than down. */
+
+.premise { margin: 0 0 4px; padding-left: 22px; display: flex; flex-direction: column; gap: 7px; color: var(--ink-dim); font-size: 15px; line-height: 1.35; }
+.premise b { color: var(--ink); }
+
+.finder { display: flex; flex-direction: column; gap: 8px; }
+.finder-label { margin: 2px 0 -2px; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-dim); }
+
+.look-preview {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 12px 14px; border: none; border-radius: var(--radius);
+  font: inherit; text-align: left;
+}
+.look-emblem { font-size: 34px; line-height: 1; }
+.look-words { display: flex; flex-direction: column; min-width: 0; }
+.look-name { font-weight: 800; font-size: 19px; }
+.look-detail { font-size: 13px; opacity: 0.75; }
+
+.swatches { display: flex; gap: 8px; }
+.swatch { flex: 1; height: 42px; border: 3px solid transparent; border-radius: 12px; }
+.swatch[data-chosen] { border-color: var(--ink); }
+.emblems { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.emblem {
+  height: 46px; font-size: 24px; line-height: 1;
+  background: var(--bg-raised); border: 2px solid var(--line); border-radius: 12px;
+}
+.emblem[data-chosen] { border-color: var(--accent); background: #102a2e; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  padding: 9px 13px; font: inherit; font-size: 14px; font-weight: 700;
+  background: none; color: var(--ink-dim);
+  border: 2px solid var(--line); border-radius: 99px;
+}
+.chip[data-chosen] { border-color: var(--accent); color: var(--accent); background: #102a2e; }
+
+/* Tables you could walk over to. */
+.tables { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.table {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 11px 13px; font: inherit; text-align: left;
+  background: var(--bg-raised); color: var(--ink);
+  border: 2px solid var(--line); border-radius: var(--radius);
+}
+.table:active { transform: scale(0.99); border-color: var(--accent); }
+.table-faces { display: flex; }
+.table-faces .face { margin-right: -8px; border: 2px solid var(--bg-raised); }
+.face {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 50%; font-size: 15px; flex: 0 0 auto;
+}
+.table-words { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.table-who { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table-where { font-size: 12px; color: var(--ink-dim); }
+.table-code { font-weight: 800; letter-spacing: 0.12em; color: var(--accent); }
+
+.crew li .who small { display: block; font-size: 12px; font-weight: 500; color: var(--ink-dim); }
+
+/* The phone as a flag: the only thing that works across a dark, loud room. */
+.overlay-beacon { gap: 10px; }
+.beacon-emblem { font-size: 42vw; line-height: 1; }
+.beacon-name { font-size: 11vw; font-weight: 800; letter-spacing: 0.04em; }
+.beacon-sub { margin: 0; font-size: 14px; opacity: 0.7; }
+
+/* ─────────────────── the game running underneath ─────────────────── */
+
+.side-toggle {
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; width: 100%;
+  padding: 12px 14px; font: inherit; text-align: left;
+  background: var(--bg-raised); color: var(--ink);
+  border: 2px solid var(--line); border-radius: var(--radius);
+}
+.side-toggle[aria-pressed="true"] { border-color: var(--accent); background: #102a2e; }
+.side-toggle-title { font-weight: 800; }
+.side-toggle-blurb { grid-column: 1; font-size: 13px; color: var(--ink-dim); }
+.side-toggle-state {
+  grid-row: 1 / span 2; align-self: center;
+  font-size: 11px; font-weight: 800; letter-spacing: 0.1em;
+  padding: 5px 9px; border-radius: 99px; background: var(--line); color: var(--ink-dim);
+}
+.side-toggle[aria-pressed="true"] .side-toggle-state { background: var(--accent); color: var(--accent-ink); }
+.side-toggle:disabled { opacity: 1; }
+
+/* A strip along the bottom of whatever you are already looking at. */
+.side-chip {
+  position: fixed; left: 10px; right: 10px; bottom: calc(var(--safe-bottom) + 10px);
+  z-index: 40; display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px; font: inherit;
+  background: var(--bg-sunken); color: var(--ink);
+  border: 2px solid var(--accent); border-radius: 99px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.side-chip-label { font-size: 10px; font-weight: 800; letter-spacing: 0.14em; color: var(--ink-dim); }
+.side-chip-word { flex: 1; font-size: 19px; font-weight: 800; color: var(--accent); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-chip-score { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+/* The strip is fixed over the bottom of the screen, so whatever is under it
+   needs somewhere to go — otherwise it sits on the standings. */
+body.has-side .screen { padding-bottom: calc(var(--safe-bottom) + 76px); }
+
+.overlay-side { gap: 12px; padding: 24px 16px; }
+.overlay-side .pick-grid, .overlay-side .standings { width: min(92vw, 460px); }
+.overlay-accused { gap: 14px; }
+.overlay-accused .accused-text { font-size: 23px; }
+.overlay-accused .accused-row { display: flex; gap: 10px; width: min(92vw, 420px); }
+.overlay-accused .accused-row .btn { flex: 1; }

@@ -44,14 +44,7 @@ export function createParty({ send, me, timerBar }) {
     overStandings: $('party-over-standings'),
   };
 
-  const state = {
-    round: 0,
-    people: [],
-    word: null,
-    sealed: false,
-    /** The accusation currently pointed at us, if any. */
-    askingMe: null,
-  };
+  const state = { round: 0, people: [], sealed: false };
   let cancelTimer = () => {};
 
   const others = () => state.people.filter((p) => p.id !== me());
@@ -154,34 +147,6 @@ export function createParty({ send, me, timerBar }) {
     el.input.replaceChildren(grid);
   }
 
-  /** Don't Say It: your word, and the people you can accuse. */
-  function renderClaim() {
-    const wrap = document.createElement('div');
-    wrap.className = 'claim';
-
-    const word = document.createElement('div');
-    word.className = 'claim-word';
-    word.textContent = state.word ?? '…';
-
-    const hint = document.createElement('p');
-    hint.className = 'claim-hint';
-    hint.textContent = 'Tap whoever says it. They have to agree it happened.';
-
-    const grid = document.createElement('div');
-    grid.className = 'pick-grid';
-    for (const person of others()) {
-      const choice = button(person.name, 'pick');
-      choice.addEventListener('click', () => {
-        send(C2S.CLAIM, { targetId: person.id });
-        el.waiting.textContent = `Waiting for ${person.name} to own up…`;
-      });
-      grid.append(choice);
-    }
-
-    wrap.append(word, hint, grid);
-    el.input.replaceChildren(wrap);
-  }
-
   /** Replace the input with what we committed to, so it cannot be fiddled with. */
   function sealed(shown) {
     state.sealed = true;
@@ -195,7 +160,6 @@ export function createParty({ send, me, timerBar }) {
     if (!spec) return el.input.replaceChildren();
     if (spec.kind === INPUT.NUMBER) return renderNumber(spec);
     if (spec.kind === INPUT.PLAYER) return renderPlayerPick();
-    if (spec.kind === INPUT.CLAIM) return renderClaim();
     el.input.replaceChildren();
   }
 
@@ -205,7 +169,6 @@ export function createParty({ send, me, timerBar }) {
       state.round = msg.round;
       state.sealed = false;
       state.people = msg.standings ?? [];
-      if (msg.you?.word) state.word = msg.you.word;
 
       el.title.textContent = msg.title;
       el.round.textContent = msg.of > 1 ? `${msg.round}/${msg.of}` : '';
@@ -267,53 +230,6 @@ export function createParty({ send, me, timerBar }) {
       renderStandings(el.standings, msg.standings ?? []);
     },
 
-    secret(msg) {
-      state.word = msg.word;
-      // Mid-game a new word arrives after every catch; re-render so the screen
-      // is never showing a word that is no longer yours.
-      if (!state.sealed && el.input.querySelector('.claim-word')) renderClaim();
-    },
-
-    /**
-     * An accusation. Everybody sees it — the room turning to look is the point —
-     * but only the accused gets the buttons.
-     */
-    claimAsk(msg) {
-      if (msg.target !== me()) {
-        el.waiting.textContent = `${msg.by} says ${msg.targetName} said “${msg.word}”.`;
-        return;
-      }
-      state.askingMe = msg.claimId;
-
-      const wrap = document.createElement('div');
-      wrap.className = 'accused';
-
-      const text = document.createElement('p');
-      text.className = 'accused-text';
-      text.textContent = `${msg.by} says you said “${msg.word}”.`;
-
-      const row = document.createElement('div');
-      row.className = 'accused-row';
-      const yes = button('I DID', 'btn btn-go');
-      const no = button('NEVER', 'btn');
-      yes.addEventListener('click', () => send(C2S.CONFIRM, { claimId: msg.claimId, ok: true }));
-      no.addEventListener('click', () => send(C2S.CONFIRM, { claimId: msg.claimId, ok: false }));
-      row.append(yes, no);
-
-      wrap.append(text, row);
-      el.input.replaceChildren(wrap);
-    },
-
-    claimDone(msg) {
-      if (msg.claimId === state.askingMe) {
-        state.askingMe = null;
-        renderClaim();
-      }
-      el.waiting.textContent = msg.ok
-        ? `${msg.by} caught ${msg.target} on “${msg.word}” — +${msg.points}.`
-        : `${msg.target} denies it${msg.reason ? ` (${msg.reason})` : ''}.`;
-    },
-
     over(msg) {
       cancelTimer();
       el.timer.style.width = '0%';
@@ -324,16 +240,6 @@ export function createParty({ send, me, timerBar }) {
           ? `${msg.winners.join(' & ')} ${msg.winners.length > 1 ? 'tie' : 'wins'}`
           : 'Nobody scored. Extraordinary.';
       renderStandings(el.overStandings, msg.standings ?? []);
-
-      if (msg.words?.length) {
-        // The reveal everybody wants: what was everyone actually chasing?
-        for (const { name, word } of msg.words) {
-          const li = document.createElement('li');
-          li.className = 'word-reveal';
-          li.textContent = `${name} was chasing “${word}”`;
-          el.overStandings.append(li);
-        }
-      }
       el.over.hidden = false;
     },
 

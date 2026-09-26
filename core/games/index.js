@@ -24,14 +24,37 @@ const SPACETEAM = {
 /** Sealed-round games are pure definitions; these two need no engine of their own. */
 const SEALED = [bids, superlatives];
 
-/** What the lobby offers, in the order it should be offered. */
+/**
+ * What the lobby offers, in the order it should be offered.
+ *
+ * Don't Say It is deliberately absent: it is not something you play *instead*
+ * of a game, it is the thing that runs underneath whichever one you picked. The
+ * lobby offers it as a switch instead — see SIDE_GAME.
+ */
 export const CATALOGUE = [
   SPACETEAM,
   // Sealed Bids first of the party games: it is the fastest to explain, so it
   // is the one to hand strangers who have not played anything yet.
   ...SEALED.map(({ key, title, blurb, minPlayers }) => ({ key, title, blurb, minPlayers })),
-  { key: taboo.key, title: taboo.title, blurb: taboo.blurb, minPlayers: taboo.minPlayers },
 ];
+
+/** The game that runs under the others, and what the lobby says about it. */
+export const SIDE_GAME = {
+  key: taboo.key,
+  title: taboo.title,
+  blurb: taboo.blurb,
+  minPlayers: taboo.minPlayers,
+};
+
+/**
+ * Build the game that runs underneath the rest of the evening.
+ *
+ * Open-ended on purpose: it outlives any number of rounds played on top of it,
+ * and only the host switching it off ends it.
+ */
+export function createSideGame({ transport, random }) {
+  return new Taboo({ transport, random, durationMs: null, side: true });
+}
 
 export const DEFAULT_GAME = GAMES.SPACETEAM;
 
@@ -50,6 +73,5 @@ export function isGame(key) {
 export function createEngine(key, { transport, random }) {
   const definition = SEALED.find((game) => game.key === key);
   if (definition) return new SealedRounds({ definition, transport, random });
-  if (key === taboo.key) return new Taboo({ transport, random });
   return new Game({ transport, random });
 }

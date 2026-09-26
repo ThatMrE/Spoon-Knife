@@ -8,6 +8,9 @@ import { buzz, sfx, unlockAudio } from '/js/feedback.js';
 import { MotionWatcher } from '/js/motion.js';
 import { renderGizmo } from '/js/gizmos.js';
 import { createParty } from '/js/party.js';
+import { createSide } from '/js/side.js';
+import { createFinder } from '/js/find.js';
+import { colourOf, describeLook } from '/shared/looks.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -29,6 +32,10 @@ const el = {
   lobbyHint: $('lobby-hint'),
   lobbyResult: $('lobby-result'),
   lobbyGames: $('lobby-games'),
+  btnSide: $('btn-side'),
+  sideTitle: $('side-title'),
+  sideBlurb: $('side-blurb'),
+  sideState: $('side-state'),
   btnReady: $('btn-ready'),
   btnStart: $('btn-start'),
   hudWave: $('hud-wave'),
@@ -122,12 +129,18 @@ function forgetSeat() {
 }
 
 let net = new Net();
+const TABLES_POLL_MS = 5000;
+let tablesTimer = null;
 const motion = new MotionWatcher((kind) => net.send(C2S.MOTION, { kind }));
 
 // ───────────────────────────────── helpers ─────────────────────────────────
 
 function show(name) {
-  for (const [key, node] of Object.entries(el.screens)) node.toggleAttribute('data-active', key === name);
+  for (const [key, node] of Object.entries(el.screens)) {
+    node.toggleAttribute('data-active', key === name);
+  }
+  // The tables list is only worth fetching while somebody is looking at it.
+  watchTables(name === 'home');
 }
 
 let toastTimer = null;
@@ -161,6 +174,25 @@ const party = createParty({
   timerBar: (node, ms) => runTimerBar(node, ms),
 });
 
+const side = createSide({
+  send: (type, payload) => net.send(type, payload),
+  me: () => state.playerId,
+  toast: (message, kind) => toast(message, kind),
+  alarm: () => {
+    // Being accused is the one moment a phone in a pocket has to interrupt you.
+    sfx.alarm();
+    buzz([80, 60, 80]);
+  },
+});
+
+const finder = createFinder({
+  name: () => el.name.value.trim(),
+  onJoin: (code) => {
+    el.code.value = code;
+    enter(C2S.JOIN, { code });
+  },
+});
+
 let cancelOrderTimer = () => {};
 let cancelAllHandsTimer = () => {};
 
@@ -183,6 +215,7 @@ function flashOrder(kind) {
 // ───────────────────────────────── home ─────────────────────────────────
 
 el.name.value = localStorage.getItem('spaceteam:name') ?? '';
+el.name.addEventListener('input', () => finder.paint());
 el.code.addEventListener('input', () => {
   el.code.value = el.code.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
 });
@@ -202,7 +235,7 @@ async function enter(type, extra) {
       await net.connect();
       state.connected = true;
     }
-    net.send(type, { name, ...extra });
+    net.send(type, { name, look: finder.look, ...extra });
     el.homeHint.textContent = '';
   } catch {
     el.homeHint.textContent = 'Could not reach the ship. Same WiFi as the host?';
@@ -210,6 +243,7 @@ async function enter(type, extra) {
 }
 
 $('btn-create').addEventListener('click', () => enter(C2S.CREATE));
+$('btn-beacon').addEventListener('click', () => finder.beacon());
 
 $('btn-solo').addEventListener('click', async () => {
   const name = el.name.value.trim() || 'SOLO';
@@ -242,6 +276,10 @@ el.btnReady.addEventListener('click', async () => {
   if (state.ready) await motion.request();
 });
 
+el.btnSide.addEventListener('click', () => {
+  net.send(C2S.SIDE_GAME, { on: el.btnSide.getAttribute('aria-pressed') !== 'true' });
+});
+
 el.btnStart.addEventListener('click', async () => {
   await motion.request();
   net.send(C2S.START);
@@ -249,6 +287,7 @@ el.btnStart.addEventListener('click', async () => {
 
 $('btn-leave').addEventListener('click', () => {
   state.rejoining = false;
+  side.reset();
   forgetSeat();
   net.send(C2S.LEAVE);
   location.reload();
@@ -320,15 +359,26 @@ function wire(transport) {
         li.classList.toggle('is-ready', player.ready || player.isHost);
         li.classList.toggle('is-me', player.id === state.playerId);
 
+        const face = document.createElement('span');
+        face.className = 'face';
+        face.style.background = colourOf(player.look?.colour).hex;
+        face.textContent = player.look?.emblem ?? '?';
+
         const who = document.createElement('span');
         who.className = 'who';
         who.textContent = player.name;
+        const where = describeLook(player.look);
+        if (where) {
+          const detail = document.createElement('small');
+          detail.textContent = where;
+          who.append(detail);
+        }
 
         const tag = document.createElement('span');
         tag.className = 'tag';
         tag.textContent = player.isHost ? 'HOST' : player.ready ? 'READY' : 'WAITING';
 
-        li.append(who, tag);
+        li.append(face, who, tag);
         return li;
       }),
     );
@@ -359,6 +409,14 @@ function wire(transport) {
         return li;
       }),
     );
+
+    if (msg.side) {
+      el.sideTitle.textContent = msg.side.title;
+      el.sideBlurb.textContent = msg.side.blurb;
+      el.sideState.textContent = msg.side.on ? 'RUNNING' : 'OFF';
+      el.btnSide.setAttribute('aria-pressed', String(msg.side.on));
+      el.btnSide.disabled = !state.isHost;
+    }
 
     el.btnStart.hidden = !state.isHost;
     el.btnReady.hidden = state.isHost;
@@ -535,18 +593,14 @@ function wire(transport) {
 
   .on(S2C.STANDINGS, (msg) => party.standings(msg))
 
-  .on(S2C.SECRET, (msg) => party.secret(msg))
+  .on(S2C.SIDE, (msg) => side.state(msg))
 
-  .on(S2C.CLAIM_ASK, (msg) => {
-    party.claimAsk(msg);
-    if (msg.target !== state.playerId) return;
-    // Being accused is the one moment a phone in a pocket has to interrupt you.
-    sfx.alarm();
-    buzz([80, 60, 80]);
-  })
+  .on(S2C.SECRET, (msg) => side.word(msg))
+
+  .on(S2C.CLAIM_ASK, (msg) => side.accusation(msg))
 
   .on(S2C.CLAIM_DONE, (msg) => {
-    party.claimDone(msg);
+    side.settled(msg);
     if (msg.ok) sfx.good();
   })
 
@@ -678,27 +732,48 @@ async function detectServer() {
   }
 }
 
+finder.paint();
+
+/**
+ * Keep the tables list honest while somebody is looking at it.
+ *
+ * Only on the home screen, and only every few seconds: a bar's WiFi is not the
+ * place to poll hard, and a table that appears four seconds late is still a
+ * table you can walk over to.
+ */
+function watchTables(on) {
+  clearInterval(tablesTimer);
+  tablesTimer = null;
+  if (!on) return;
+  finder.refresh();
+  tablesTimer = setInterval(() => {
+    if (document.visibilityState === 'visible') finder.refresh();
+  }, TABLES_POLL_MS);
+}
+
 detectServer().then((server) => {
   if (!server) {
-    // Static copy: multiplayer would just fail, so do not offer it.
+    // Static copy: there is no server here, so there is nobody to meet.
     el.multiplayer.hidden = true;
     el.staticNote.hidden = false;
     el.staticNote.innerHTML =
-      'This is a static copy, so there is no ship to fly with other people here — ' +
-      'practice solo below. For the real game, run the server on a laptop or ' +
-      '<strong>host it from an Android phone</strong>; both are in the ' +
-      '<a href="https://github.com/ThatMrE/Spoon-Knife" rel="noreferrer">repository</a>.';
+      'This is a static copy with no server behind it, so there is nobody here to ' +
+      'play with — have a look around solo. For the real thing, run it on a laptop ' +
+      'on the bar WiFi or <strong>host it from an Android phone</strong>; both are in ' +
+      'the <a href="https://github.com/ThatMrE/Spoon-Knife" rel="noreferrer">repository</a>.';
     return;
   }
 
   if (server.public) {
-    // On a LAN the code only reaches the room you are in. Here it reaches
-    // anyone who types it, which is worth saying out loud before you shout it.
+    // On a bar's WiFi the code only reaches the room you are in. Here it reaches
+    // anyone who types it, which is worth saying before you shout it.
     el.staticNote.hidden = false;
     el.staticNote.textContent =
-      'This ship is on the open internet, so your four-letter code is the only ' +
-      'thing keeping strangers out. Share it with your crew, not with a livestream.';
+      'This one is on the open internet rather than a bar WiFi, so your four-letter ' +
+      'code is the only thing keeping strangers out. Read it to the next table, not ' +
+      'to a livestream.';
   }
+  watchTables(true);
 });
 
 // Browsers keep audio muted until a real gesture; the first tap anywhere pays for it.

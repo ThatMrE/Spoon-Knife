@@ -9,7 +9,7 @@
 import { strict as assert } from 'node:assert';
 import test, { after, before } from 'node:test';
 
-import { C2S, GAMES, INPUT, S2C } from '../shared/protocol.js';
+import { C2S, GAMES, INPUT, PHASE, S2C } from '../shared/protocol.js';
 import { createGameServer } from '../server/index.js';
 import { ConnectionGuard } from '../server/guard.js';
 import { TestClient } from './client.js';
@@ -73,12 +73,18 @@ test('the lobby advertises every game, with Spaceteam picked', async () => {
   assert.equal(lobby.game, GAMES.SPACETEAM);
   assert.deepEqual(
     lobby.games.map((g) => g.key),
-    [GAMES.SPACETEAM, GAMES.BIDS, GAMES.SUPERLATIVES, GAMES.TABOO],
+    [GAMES.SPACETEAM, GAMES.BIDS, GAMES.SUPERLATIVES],
   );
   for (const game of lobby.games) {
     assert.ok(game.title && game.blurb, `${game.key} has nothing to show in the lobby`);
     assert.ok(game.minPlayers >= 1);
   }
+
+  // Don't Say It is not one of them: it is a switch, because it runs underneath
+  // whichever game is picked rather than instead of one.
+  assert.equal(lobby.games.some((g) => g.key === GAMES.TABOO), false);
+  assert.equal(lobby.side.key, GAMES.TABOO);
+  assert.equal(lobby.side.on, false);
 });
 
 test('the host picks the game, and only the host', async () => {
@@ -167,40 +173,103 @@ test('Who In This Bar: votes score the winner and whoever called it', async () =
   assert.equal(score('BO'), 2);
 });
 
-test("Don't Say It: a secret word each, and a catch the accused has to admit", async () => {
-  const group = await crew(1);
-  const [host, guest] = group;
+test("Don't Say It runs underneath whatever is being played", async () => {
+  const group = await crew(2);
+  const [host, bo, cy] = group;
 
-  host.send(C2S.PICK_GAME, { game: GAMES.TABOO });
-  clear(group);
-  host.send(C2S.START);
+  host.send(C2S.SIDE_GAME, { on: true });
 
   const secret = await host.waitFor(S2C.SECRET);
-  const guestSecret = await guest.waitFor(S2C.SECRET);
-  assert.ok(secret.word);
-  assert.notEqual(secret.word, guestSecret.word);
+  const boSecret = await bo.waitFor(S2C.SECRET);
+  assert.equal(secret.side, true);
+  assert.notEqual(secret.word, boSecret.word);
   // Nobody else may learn it: the only copy on the wire went to its owner.
-  assert.equal(guest.all(S2C.SECRET).length, 1);
-  assert.equal(guest.all(S2C.SECRET)[0].word, guestSecret.word);
+  assert.equal(bo.all(S2C.SECRET).length, 1);
+  // And it deals no round of its own — the screen belongs to the other game.
+  assert.equal(host.all(S2C.ROUND).length, 0);
+  const side = await host.waitFor(S2C.SIDE);
+  assert.equal(side.on, true);
+  assert.equal(side.standings.length, 3);
 
+  // Now play something on top of it.
+  host.send(C2S.PICK_GAME, { game: GAMES.BIDS });
+  host.send(C2S.START);
   const round = await host.waitFor(S2C.ROUND);
-  assert.equal(round.input.kind, INPUT.CLAIM);
-  const guestId = round.standings.find((p) => p.name === 'BO').id;
+  assert.equal(round.game, GAMES.BIDS, 'the foreground game is the one that was picked');
+  const boId = round.standings.find((p) => p.name === 'BO').id;
 
-  host.send(C2S.CLAIM, { targetId: guestId });
-  const ask = await guest.waitFor(S2C.CLAIM_ASK);
+  // An accusation lands mid-round, and the round is unaffected by it.
+  host.send(C2S.CLAIM, { targetId: boId });
+  const ask = await bo.waitFor(S2C.CLAIM_ASK);
   assert.equal(ask.word, secret.word);
-  assert.equal(ask.target, guestId);
+  assert.equal(ask.side, true);
+  bo.send(C2S.CONFIRM, { claimId: ask.claimId, ok: true });
 
-  guest.send(C2S.CONFIRM, { claimId: ask.claimId, ok: true });
   const done = await host.waitFor(S2C.CLAIM_DONE);
   assert.equal(done.ok, true);
   assert.equal(done.points, 3);
-
-  const standings = await host.waitFor(S2C.STANDINGS);
-  assert.equal(standings.standings.find((p) => p.name === 'ADA').score, 3);
+  const scored = host.all(S2C.SIDE).at(-1);
+  assert.equal(scored.standings.find((p) => p.name === 'ADA').score, 3);
   // Caught words are replaced, so the chase continues.
   assert.notEqual(host.all(S2C.SECRET).at(-1).word, secret.word);
+
+  // The bidding round is still there, and still bids.
+  group.forEach((client, i) => client.send(C2S.SUBMIT, { round: 1, value: [4, 2, 0][i] }));
+  const reveal = await host.waitFor(S2C.REVEAL, 5000);
+  assert.match(reveal.note, /ADA took it for 4\./);
+
+  // The two scoreboards are separate. ADA's score in the bidding game is the
+  // prize and nothing else — the three points she got for the catch belong to
+  // the game underneath, and stayed there.
+  assert.equal(reveal.standings.find((p) => p.name === 'ADA').score, round.you.prize);
+  assert.equal(host.all(S2C.SIDE).at(-1).standings.find((p) => p.name === 'ADA').score, 3);
+
+  cy.send(C2S.LEAVE);
+});
+
+test('the game underneath outlives the game on top of it', async () => {
+  const group = await crew(1);
+  const [host, guest] = group;
+
+  host.send(C2S.SIDE_GAME, { on: true });
+  await guest.waitFor(S2C.SIDE);
+  host.send(C2S.PICK_GAME, { game: GAMES.SPACETEAM });
+  host.send(C2S.START);
+  await host.waitFor(S2C.PANEL);
+
+  // Back to the lobby: the foreground game is over, the one underneath is not.
+  host.send(C2S.RESTART);
+  for (;;) {
+    const lobby = host.all(S2C.LOBBY).at(-1);
+    if (lobby?.phase === PHASE.LOBBY && lobby.side.on) break;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  // Still accusable with nothing being played at all.
+  const sideState = host.all(S2C.SIDE).at(-1);
+  const guestId = sideState.standings.find((p) => p.name === 'BO').id;
+  guest.received.length = 0;
+  host.send(C2S.CLAIM, { targetId: guestId });
+  assert.equal((await guest.waitFor(S2C.CLAIM_ASK)).by, 'ADA');
+
+  // And the host can call it off.
+  host.send(C2S.SIDE_GAME, { on: false });
+  for (;;) {
+    const off = host.all(S2C.SIDE).at(-1);
+    if (off && off.on === false) {
+      assert.equal(off.words.length, 2, 'it says what everybody was chasing');
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+});
+
+test('only the host runs the game underneath', async () => {
+  const [, guest] = await crew(1);
+
+  guest.send(C2S.SIDE_GAME, { on: true });
+
+  assert.match((await guest.waitFor(S2C.ERROR)).message, /Only the host/);
 });
 
 test('Spaceteam still works, and the lobby reports either kind of result', async () => {

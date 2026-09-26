@@ -53,7 +53,7 @@ test('the client page is served at the document root', async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-type'), /text\/html/);
   const body = await response.text();
-  assert.match(body, /SPACE/, 'should be the game page');
+  assert.match(body, /SOCIO/, 'should be the game page');
   assert.match(body, /\/js\/app\.js/, 'should load the client module');
 });
 

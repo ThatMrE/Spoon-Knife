@@ -207,3 +207,77 @@ test('nothing happens after the final whistle', () => {
   assert.equal(rec.of(S2C.CLAIM_ASK).length, 0);
   assert.equal(rec.of(S2C.PARTY_OVER).length, 0, 'ended once, not twice');
 });
+
+// ────────────────────── running underneath another game ──────────────────────
+
+function sideGame(now = 1000, roster = ROSTER) {
+  const rec = recorder();
+  const game = new Taboo({
+    transport: rec.transport,
+    random: seeded(5),
+    durationMs: null,
+    side: true,
+  });
+  game.start(roster, now);
+  return { game, rec };
+}
+
+test('the game underneath takes no screen of its own', () => {
+  const { rec } = sideGame();
+
+  // A round would hijack whatever is being played on top of it.
+  assert.equal(rec.of(S2C.ROUND).length, 0);
+  assert.equal(rec.of(S2C.SECRET).length, 3, 'everybody still gets a word');
+  for (const message of rec.of(S2C.SECRET)) assert.equal(message.side, true);
+  const state = rec.last(S2C.SIDE);
+  assert.equal(state.on, true);
+  assert.equal(state.standings.length, 3);
+});
+
+test('it has no clock: it outlives however many games are played on it', () => {
+  const { game } = sideGame();
+
+  game.tick(1000 + 24 * 60 * 60 * 1000);
+
+  assert.equal(game.isOver, false);
+});
+
+test('somebody who walks in mid-session gets a word', () => {
+  const { game, rec } = sideGame();
+  rec.clear();
+
+  game.addPlayer({ id: 'p4', name: 'DI' }, 2000);
+
+  const word = rec.last(S2C.SECRET, 'p4');
+  assert.ok(word.word);
+  assert.equal(new Set([...game.players.values()].map((p) => p.word)).size, 4, 'no two share one');
+  assert.equal(rec.last(S2C.SIDE).standings.length, 4);
+  // And they can be accused like anybody else.
+  game.input('p1', { t: C2S.CLAIM, targetId: 'p4' }, 2100);
+  assert.equal(rec.last(S2C.CLAIM_ASK).target, 'p4');
+});
+
+test('being left alone makes it quiet, not over', () => {
+  const { game } = sideGame();
+
+  game.removePlayer('p2', 2000);
+  game.removePlayer('p3', 2000);
+
+  // Somebody else may yet walk in; a standalone round would have ended here.
+  assert.equal(game.isOver, false);
+  game.addPlayer({ id: 'p4', name: 'DI' }, 2100);
+  assert.equal(game.players.size, 2);
+});
+
+test('the host can call it off, and it says what everybody was chasing', () => {
+  const { game, rec } = sideGame();
+
+  game.stop(3000, 'The host called it off.');
+
+  const off = rec.last(S2C.SIDE);
+  assert.equal(off.on, false);
+  assert.equal(off.reason, 'The host called it off.');
+  assert.equal(off.words.length, 3);
+  assert.equal(rec.of(S2C.PARTY_OVER).length, 0, 'it does not take over the screen to say goodbye');
+  assert.equal(game.isOver, true);
+});

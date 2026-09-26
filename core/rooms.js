@@ -2,8 +2,17 @@
  * Rooms: the lobby half of the server. Owns codes, crew rosters, ready state
  * and the tick loop that drives each room's Game.
  */
+import { sanitizeLook } from '../shared/looks.js';
 import { C2S, LIMITS, PHASE, S2C } from '../shared/protocol.js';
-import { CATALOGUE, DEFAULT_GAME, catalogueEntry, createEngine, isGame } from './games/index.js';
+import {
+  CATALOGUE,
+  DEFAULT_GAME,
+  SIDE_GAME,
+  catalogueEntry,
+  createEngine,
+  createSideGame,
+  isGame,
+} from './games/index.js';
 
 /** No I/O/0/1 — these get read aloud and typed in on a phone. */
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -51,6 +60,15 @@ export class Room {
 
     this.gameKey = DEFAULT_GAME;
     this.game = this.makeEngine();
+    /**
+     * Don't Say It, running under everything else.
+     *
+     * It belongs to the room rather than to a game: it starts when the host
+     * switches it on and keeps going through launches, results and lobbies
+     * until they switch it off, which is the only way "get somebody to say your
+     * word" can work. See core/games/taboo.js.
+     */
+    this.side = null;
     this.timer = null;
   }
 
@@ -67,6 +85,35 @@ export class Room {
         toAll: (message) => this.broadcast(message),
       },
     });
+  }
+
+  /** Start or stop the game running underneath this one. */
+  setSideGame(playerId, on) {
+    if (playerId !== this.hostId) return { error: 'Only the host can start that.' };
+    if (Boolean(on) === Boolean(this.side)) return {};
+
+    if (!on) {
+      this.side.stop(Date.now(), 'The host called it off.');
+      this.side = null;
+      this.syncTimer();
+      this.pushLobby();
+      return {};
+    }
+
+    const aboard = [...this.players.values()].filter((p) => p.connected);
+    if (aboard.length < SIDE_GAME.minPlayers) {
+      return { error: `${SIDE_GAME.title} needs somebody to talk to.` };
+    }
+    this.side = createSideGame({
+      transport: {
+        toPlayer: (id, message) => this.players.get(id)?.connection.send(message),
+        toAll: (message) => this.broadcast(message),
+      },
+    });
+    this.side.start(aboard.map(({ id, name }) => ({ id, name })));
+    this.syncTimer();
+    this.pushLobby();
+    return {};
   }
 
   /** The host chooses what the room is playing. */
@@ -92,7 +139,23 @@ export class Room {
     return this.players.size === 0;
   }
 
-  add(connection, rawName) {
+  /**
+   * What a table looks like from across the bar.
+   *
+   * Deliberately thin: who is sitting there and what they look like, which is
+   * what somebody deciding whether to walk over needs, and nothing else.
+   */
+  summary() {
+    const players = [...this.players.values()].filter((p) => p.connected);
+    return {
+      code: this.code,
+      game: this.gameKey,
+      playing: this.phase !== PHASE.LOBBY,
+      players: players.map((p) => ({ name: p.name, look: p.look })),
+    };
+  }
+
+  add(connection, rawName, rawLook) {
     if (this.players.size >= LIMITS.MAX_PLAYERS) {
       return { error: 'That ship is full.' };
     }
@@ -104,6 +167,9 @@ export class Room {
     const player = {
       id,
       name: sanitizeName(rawName),
+      // How to spot them in the room. A fixed vocabulary, so it can carry a
+      // description and nothing else — see shared/looks.js.
+      look: sanitizeLook(rawLook),
       ready: false,
       connection,
       token: makeToken(),
@@ -113,6 +179,9 @@ export class Room {
     this.players.set(id, player);
     if (!this.hostId) this.hostId = id;
     this.emptySince = null;
+    // Somebody who walks in mid-session joins the game underneath immediately —
+    // that one does not wait for a launch.
+    this.side?.addPlayer({ id, name: player.name });
 
     connection.send({
       t: S2C.WELCOME,
@@ -157,6 +226,7 @@ export class Room {
     this.broadcast({ t: S2C.CREW, name: player.name, connected: true });
 
     if (this.phase === PHASE.PLAYING) this.game.setConnected(player.id, true);
+    this.side?.setConnected(player.id, true);
     return { player };
   }
 
@@ -177,6 +247,7 @@ export class Room {
     player.connected = false;
     player.connection = SILENT_CONNECTION;
     this.game.setConnected(playerId, false);
+    this.side?.setConnected(playerId, false);
     this.broadcast({ t: S2C.CREW, name: player.name, connected: false });
     this.pushLobby();
 
@@ -206,6 +277,8 @@ export class Room {
     if (!player) return;
     this.clearGrace(player);
     this.players.delete(playerId);
+    this.side?.removePlayer(playerId);
+    if (this.side?.isOver) this.side = null;
 
     if (this.hostId === playerId) {
       this.hostId = this.players.keys().next().value ?? null;
@@ -216,8 +289,10 @@ export class Room {
     }
     if (this.isEmpty) {
       this.emptySince = Date.now();
+      this.side = null;
       this.stopTimer();
     } else {
+      this.syncTimer();
       this.pushLobby();
     }
   }
@@ -254,22 +329,22 @@ export class Room {
     this.game = this.makeEngine();
     this.game.start(aboard.map(({ id, name }) => ({ id, name })));
     this.pushLobby();
-    this.startTimer();
+    this.syncTimer();
     return {};
   }
 
   restart(playerId) {
     if (playerId !== this.hostId) return { error: 'Only the host can reset the ship.' };
-    this.stopTimer();
     this.phase = PHASE.LOBBY;
+    this.syncTimer();
     for (const player of this.players.values()) player.ready = false;
     this.pushLobby();
     return {};
   }
 
   finish() {
-    this.stopTimer();
     this.phase = PHASE.LOBBY;
+    this.syncTimer();
     // Seats are only held for the duration of a run.
     for (const player of [...this.players.values()]) {
       this.clearGrace(player);
@@ -280,9 +355,23 @@ export class Room {
     this.pushLobby();
   }
 
+  /**
+   * One timer for the room, not for the game.
+   *
+   * It has to keep running between games, because the game underneath does —
+   * accusations lapse on a clock whether or not anything is being played on top.
+   */
+  syncTimer() {
+    const wanted = this.phase === PHASE.PLAYING || Boolean(this.side);
+    if (wanted && !this.timer) this.startTimer();
+    else if (!wanted && this.timer) this.stopTimer();
+  }
+
   startTimer() {
     this.stopTimer();
     this.timer = setInterval(() => {
+      this.side?.tick();
+      if (this.phase !== PHASE.PLAYING) return;
       this.game.tick();
       if (this.game.isOver) this.finish();
     }, TICK_MS);
@@ -302,9 +391,11 @@ export class Room {
       lastResult: this.lastResult,
       game: this.gameKey,
       games: CATALOGUE,
+      side: { ...SIDE_GAME, on: Boolean(this.side) },
       players: [...this.players.values()].map((p) => ({
         id: p.id,
         name: p.name,
+        look: p.look,
         ready: p.ready,
         isHost: p.id === this.hostId,
         connected: p.connected,
@@ -357,6 +448,23 @@ export class RoomManager {
     return this.rooms.get(String(code ?? '').toUpperCase().trim());
   }
 
+  /**
+   * Tables somebody in the bar could walk up to and join.
+   *
+   * Only rooms still in their lobby: joining half way through a game is not a
+   * thing, and a table mid-game is not looking for people.
+   *
+   * The caller decides whether to publish this at all. On a LAN, everybody who
+   * can see it is already in the room. On the open internet it would hand out
+   * every room code on the server, and the code is the only door — so
+   * server/index.js serves it only when the server is not public.
+   */
+  openTables() {
+    return [...this.rooms.values()]
+      .filter((room) => room.phase === PHASE.LOBBY && !room.isEmpty)
+      .map((room) => room.summary());
+  }
+
   /** Reclaim rooms whose crew all wandered off. */
   sweep() {
     const now = Date.now();
@@ -389,7 +497,7 @@ export class RoomManager {
           if (session.room) return;
           const room = this.create();
           if (!room) return fail('This server is holding as many ships as it can.');
-          const { player, error } = room.add(connection, msg.name);
+          const { player, error } = room.add(connection, msg.name, msg.look);
           if (error) return fail(error);
           session.room = room;
           session.playerId = player.id;
@@ -410,7 +518,7 @@ export class RoomManager {
             this.guard.noteJoinFailure(address);
             return fail(`No ship with code ${String(msg.code ?? '').toUpperCase()}.`);
           }
-          const { player, error } = room.add(connection, msg.name);
+          const { player, error } = room.add(connection, msg.name, msg.look);
           if (error) return fail(error);
           this.guard.noteJoinSuccess(address);
           session.room = room;
@@ -457,6 +565,12 @@ export class RoomManager {
           break;
         }
 
+        case C2S.SIDE_GAME: {
+          const result = session.room?.setSideGame(session.playerId, msg.on);
+          if (result?.error) fail(result.error);
+          break;
+        }
+
         case C2S.PICK_GAME: {
           const result = session.room?.pickGame(session.playerId, String(msg.game ?? ''));
           if (result?.error) fail(result.error);
@@ -465,11 +579,14 @@ export class RoomManager {
 
         // Everything a game itself understands goes to the engine unread: the
         // room does not know or care which game it is hosting.
+        case C2S.CLAIM:
+        case C2S.CONFIRM:
+          session.room?.side?.input(session.playerId, msg);
+          break;
+
         case C2S.CONTROL:
         case C2S.MOTION:
         case C2S.SUBMIT:
-        case C2S.CLAIM:
-        case C2S.CONFIRM:
           session.room?.game.input(session.playerId, msg);
           break;
 
