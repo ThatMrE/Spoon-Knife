@@ -1,0 +1,122 @@
+name: Release APK
+
+# The home page offers the Android app as a download, and a download needs a
+# stable URL that works with no GitHub account:
+#
+#   https://github.com/ThatMrE/Spoon-Knife/releases/latest/download/sociovia.apk
+#
+# CI's build artifact cannot be that. It expires, it arrives as a zip, and it is
+# behind a login — fine for a developer checking a build, useless for somebody
+# standing in a bar. So a release carries the APK instead.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag to publish, e.g. v0.1.0'
+        required: true
+
+# The only thing this needs beyond a normal build: permission to publish.
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure SDK platform 35
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+
+      # A release is a worse place to discover a broken build than a PR is.
+      - name: Unit tests
+        working-directory: android
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      - name: Build APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
+
+      # The same guard CI runs: a phone hosts by serving the client out of its
+      # own APK, so an APK missing those assets installs fine and then 404s on
+      # its own game. Shipping that to a download link would be worse than not
+      # shipping at all.
+      - name: Check it is a real, signed APK that can host
+        id: apk
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          APK=$(find android/app/build/outputs/apk/debug -name '*.apk' | head -1)
+          test -n "$APK" || { echo "::error::no APK produced"; exit 1; }
+
+          APKSIGNER=$(ls "$SDK"/build-tools/*/apksigner | tail -1)
+          "$APKSIGNER" verify --print-certs "$APK"
+
+          for entry in \
+            assets/web/index.html \
+            assets/web/js/app.js \
+            assets/web/js/find.js \
+            assets/web/js/side.js \
+            assets/web/host/bridge.js \
+            assets/web/shared/protocol.js \
+            assets/web/shared/looks.js \
+            assets/web/core/rooms.js \
+            assets/web/core/sealed.js \
+            assets/web/core/games/index.js
+          do
+            unzip -l "$APK" "$entry" | grep -q "$entry" \
+              || { echo "::error::$entry missing — this APK could not host a game"; exit 1; }
+          done
+
+          cp "$APK" sociovia.apk
+          echo "size=$(du -h sociovia.apk | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+          SIZE: ${{ steps.apk.outputs.size }}
+        run: |
+          set -euo pipefail
+
+          # Deliberately not a prerelease: GitHub excludes those from
+          # /releases/latest, which is the URL the home page links to.
+          cat > notes.md <<EOF
+          **Sociovia for Android** — $SIZE.
+
+          Install it by opening the file on your phone; Android will ask you to
+          allow installs from your browser or file manager. It is signed with the
+          standard Android debug key, which is what makes sideloading possible
+          without a Play listing.
+
+          The app does two things the web page cannot:
+
+          * **Host a table from the phone itself**, so a game works on a bar's
+            WiFi with no laptop and no internet at all.
+          * **Find tables on the WiFi** by sweeping the subnet, so nobody has to
+            read an address out loud.
+
+          Built from \`$GITHUB_SHA\`.
+          EOF
+
+          gh release create "$TAG" sociovia.apk \
+            --target "$GITHUB_SHA" \
+            --title "Sociovia $TAG" \
+            --notes-file notes.md
+
+          echo "::notice::Published $TAG — https://github.com/$GITHUB_REPOSITORY/releases/latest/download/sociovia.apk"

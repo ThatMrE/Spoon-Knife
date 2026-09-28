@@ -164,10 +164,20 @@ served to browsers, while `server/` is the Node-only transport and is not.
 
 ### Getting the APK
 
-Every push builds a debug APK in CI. Open the latest **CI** run under the
-repository's Actions tab, and download the `sociovia-debug-apk` artifact.
-It is signed with the standard Android debug key, so it installs by sideloading
-(you will have to allow install from your browser or file manager).
+**[Download the latest release](https://github.com/ThatMrE/Spoon-Knife/releases/latest/download/sociovia.apk)**
+— that link is what the home page offers, and it needs no GitHub account. Open
+the file on the phone and allow the install when it asks. It is signed with the
+standard Android debug key, which is what makes sideloading possible without a
+store listing.
+
+Releases are cut by `.github/workflows/release.yml`, from a tag or a manual run.
+It builds the APK, refuses to publish one whose bundled client is incomplete —
+an APK like that installs and then 404s on its own game — and attaches it as
+`sociovia.apk`.
+
+Every push also builds a debug APK as a CI artifact (`sociovia-debug-apk`, under
+the Actions tab). That one is for checking a build: it expires, arrives as a zip
+and needs a login, which is why it is not what the download link points at.
 
 To build it yourself you need the Android SDK (Android Studio, or the
 command-line tools):
