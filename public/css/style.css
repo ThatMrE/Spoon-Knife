@@ -582,3 +582,15 @@ body.has-side .screen { padding-bottom: calc(var(--safe-bottom) + 76px); }
 .overlay-accused .accused-text { font-size: 23px; }
 .overlay-accused .accused-row { display: flex; gap: 10px; width: min(92vw, 420px); }
 .overlay-accused .accused-row .btn { flex: 1; }
+
+/* The Android download. Big enough to be the obvious second action after
+   "practice solo", and honest about what it is: a file, not a store listing. */
+.btn-download {
+  display: flex; align-items: center; gap: 12px; text-align: left;
+  background: var(--bg-raised); border-color: var(--accent); color: var(--ink);
+  text-decoration: none;
+}
+.download-icon { font-size: 26px; line-height: 1; }
+.download-words { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.download-title { font-size: 15px; font-weight: 800; letter-spacing: 0.08em; color: var(--accent); }
+.download-sub { font-size: 12px; font-weight: 600; letter-spacing: 0.02em; color: var(--ink-dim); text-transform: none; }

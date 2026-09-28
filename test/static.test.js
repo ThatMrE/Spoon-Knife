@@ -123,3 +123,21 @@ test('both ends of the WebView bridge use the same two names', async () => {
     assert.ok(bridge.includes(name), `bridge.js no longer defines ${name}`);
   }
 });
+
+test('the home page offers the app as a download that needs no account', async () => {
+  // The CI artifact is behind a login, expires and arrives as a zip, so the
+  // page must point at the release asset instead. A typo here is silent: the
+  // button still renders, and only 404s when somebody taps it in a bar.
+  const home = await readFile(join(ROOT, 'public/index.html'), 'utf8');
+  const release = await readFile(join(ROOT, '.github/workflows/release.yml'), 'utf8');
+
+  const href = home.match(/href="(https:\/\/github\.com\/[^"]*\/releases\/latest\/download\/[^"]+)"/)?.[1];
+  assert.ok(href, 'the home page has no download link');
+
+  // Whatever the workflow uploads has to be what the link asks for.
+  const asset = href.split('/').pop();
+  assert.ok(
+    release.includes(`gh release create "$TAG" ${asset}`),
+    `the page links to ${asset}, which the release workflow does not publish`,
+  );
+});
